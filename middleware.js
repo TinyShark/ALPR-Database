@@ -19,6 +19,7 @@ export async function middleware(request) {
     "/api/verify-session",
     "/api/health-check",
     "/api/verify-key",
+    "/api/known-plates",
   ];
 
   // Check for API key in query parameters for iframe embeds (insecure)

@@ -322,127 +322,127 @@ export default function PlateTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                data.map((plate) => (
-                  <TableRow key={plate.id}>
-                    <TableCell>
-                      <a
-                        href={getImageUrl(plate.image_data)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="cursor-pointer"
-                        onClick={(e) => handleImageClick(e, plate)}
+                data.map((plate) => {
+                  console.log("Rendering plate:", plate); // Debug log 7
+                  return (
+                    <TableRow key={plate.id}>
+                      <TableCell>
+                        <a
+                          href={getImageUrl(plate.image_data)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="cursor-pointer"
+                          onClick={(e) => handleImageClick(e, plate)}
+                        >
+                          <Image
+                            src={getImageUrl(plate.image_data)}
+                            alt={plate.plate_number}
+                            width={100}
+                            height={75}
+                            className="rounded hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      </TableCell>
+                      <TableCell
+                        className={`font-medium font-mono ${
+                          plate.flagged && "text-[#F31260]"
+                        }`}
                       >
-                        <Image
-                          src={getImageUrl(plate.image_data)}
-                          alt={plate.plate_number}
-                          width={100}
-                          height={75}
-                          className="rounded hover:opacity-80 transition-opacity"
-                        />
-                      </a>
-                    </TableCell>
-                    <TableCell
-                      className={`font-medium font-mono ${
-                        plate.flagged && "text-[#F31260]"
-                      }`}
-                    >
-                      {plate.plate_number}
-                      {plate.known_name && (
-                        <div className="text-sm text-gray-500 dark:text-gray-400 font-sans">
-                          {plate.known_name}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>{plate.vehicle_description}</TableCell>
-                    <TableCell>{plate.occurrence_count}</TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {plate.tags?.length > 0 ? (
-                          plate.tags.map((tag) => (
-                            <Badge
-                              key={tag.name}
-                              variant="secondary"
-                              className="text-xs py-0.5 pl-2 pr-1 flex items-center space-x-1"
-                              style={{
-                                backgroundColor: tag.color,
-                                color: "#fff",
-                              }}
-                            >
-                              <span>{tag.name}</span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-4 w-4 p-0 hover:bg-red-500 hover:text-white rounded-full"
-                                onClick={() =>
-                                  onRemoveTag(plate.plate_number, tag.name)
-                                }
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </Badge>
-                          ))
-                        ) : (
-                          <div className="text-sm text-gray-500 dark:text-gray-400 italic">
-                            No tags
+                        {plate.plate_number}
+                        {plate.known_name && (
+                          <div className="text-sm text-gray-500 dark:text-gray-400 font-sans">
+                            {plate.known_name}
                           </div>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(plate.timestamp).toLocaleString()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <Tag className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            {availableTags.map((tag) => (
-                              <DropdownMenuItem
-                                key={tag.name}
-                                onClick={() =>
-                                  onAddTag(plate.plate_number, tag.name)
-                                }
+                      </TableCell>
+                      <TableCell>{plate.vehicle_description}</TableCell>
+                      <TableCell>
+                        {console.log("Occurrence count for plate:", plate.plate_number, plate.occurrence_count)} {/* Debug log 8 */}
+                        {plate.occurrence_count}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {Array.isArray(plate.tags) && plate.tags.length > 0 ? (
+                            plate.tags.map((tag, index) => (
+                              <Badge
+                                key={`${plate.id}-${tag.name}-${index}`}
+                                className="cursor-pointer"
+                                style={{
+                                  backgroundColor: tag.color || '#888888',
+                                  color: "#fff",
+                                }}
                               >
-                                <div className="flex items-center">
-                                  <div
-                                    className="w-3 h-3 rounded-full mr-2"
-                                    style={{ backgroundColor: tag.color }}
-                                  />
-                                  {tag.name}
-                                </div>
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            setActivePlate(plate);
-                            setIsAddKnownPlateOpen(true);
-                          }}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-red-500 hover:text-red-700"
-                          onClick={() => {
-                            setActivePlate(plate);
-                            setIsDeleteConfirmOpen(true);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                                {tag.name}
+                                <X
+                                  className="ml-1 h-3 w-3 hover:text-red-500"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRemoveTag(plate.plate_number, tag.name);
+                                  }}
+                                />
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-sm text-muted-foreground">No tags</span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(plate.timestamp).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <Tag className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              {availableTags.map((tag) => (
+                                <DropdownMenuItem
+                                  key={tag.name}
+                                  onClick={() =>
+                                    onAddTag(plate.plate_number, tag.name)
+                                  }
+                                >
+                                  <div className="flex items-center">
+                                    <div
+                                      className="w-3 h-3 rounded-full mr-2"
+                                      style={{ backgroundColor: tag.color }}
+                                    />
+                                    {tag.name}
+                                  </div>
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setActivePlate(plate);
+                              setIsAddKnownPlateOpen(true);
+                            }}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-red-500 hover:text-red-700"
+                            onClick={() => {
+                              setActivePlate(plate);
+                              setIsDeleteConfirmOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
             </TableBody>
           </Table>

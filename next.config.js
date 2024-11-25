@@ -1,19 +1,20 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  outputFileTracingIncludes: {
-    "/**": [
-      "/.next",
-      "/public",
-      "/app",
-      "/lib",
-      "/components",
-      "/config",
-      "/middleware.js",
-      "/hooks",
-      "/auth",
-      "/package.json",
-    ],
+  webpack: (config) => {
+    config.externals.push({
+      'utf-8-validate': 'commonjs utf-8-validate',
+      'bufferutil': 'commonjs bufferutil',
+    })
+    return config
   },
-};
+  async rewrites() {
+    return [
+      {
+        source: '/api/socketio/:path*',
+        destination: '/api/socket/:path*',
+      },
+    ];
+  },
+}
 
-module.exports = nextConfig;
+module.exports = nextConfig

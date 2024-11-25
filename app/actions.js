@@ -615,3 +615,12 @@ export async function regenerateApiKey() {
     return { success: false, error: error.message };
   }
 }
+
+export async function handleNewPlateDetection(plateData) {
+  // Your existing logic to save to DB
+  
+  // Emit to all connected clients
+  if (global.io) {
+    global.io.emit('newPlate', plateData)
+  }
+}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useSearchParams, usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
+import io from "socket.io-client";
 import PlateTable from "./PlateTable";
 import {
   getLatestPlateReads,
@@ -12,7 +13,9 @@ import {
   deletePlateRead,
 } from "@/app/actions";
 
-export function PlateTableWrapper() {
+let socket;
+
+export function PlateTableWrapper({ onConnectionChange, onConnectionError }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -21,6 +24,9 @@ export function PlateTableWrapper() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [availableTags, setAvailableTags] = useState([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const lastAddedPlateId = useRef(null);
+  const initialLoadComplete = useRef(false);
 
   // Get current query parameters
   const page = searchParams.get("page") || "1";
@@ -49,10 +55,10 @@ export function PlateTableWrapper() {
           getTags(),
         ]);
 
-        // Update data if we have it (removed success check)
         if (platesResult.data) {
           setData(platesResult.data);
           setTotal(platesResult.pagination.total);
+          initialLoadComplete.current = true;
         }
 
         if (tagsResult.success) {
@@ -67,6 +73,87 @@ export function PlateTableWrapper() {
     loadInitialData();
   }, [page, pageSize, search, fuzzySearch, tag, dateFrom, dateTo]);
 
+  // Initialize WebSocket
+  useEffect(() => {
+    const initializeSocket = async () => {
+      try {
+        const socketResponse = await fetch("/api/socket");
+        const data = await socketResponse.json();
+        
+        if (!socketResponse.ok) {
+          throw new Error(data.error || 'Failed to initialize socket');
+        }
+
+        socket = io({
+          path: '/api/socketio',
+          addTrailingSlash: false,
+        });
+
+        socket.on("connect", () => {
+          console.log("Socket connected successfully");
+          setIsConnected(true);
+          onConnectionChange(true);
+          onConnectionError(null);
+        });
+
+        socket.on("connect_error", (error) => {
+          console.error("Socket connection error:", error);
+          setIsConnected(false);
+          onConnectionChange(false);
+          onConnectionError(`Connection error: ${error.message}`);
+        });
+
+        socket.on("disconnect", (reason) => {
+          console.log("Socket disconnected:", reason);
+          setIsConnected(false);
+          onConnectionChange(false);
+          onConnectionError(`Disconnected: ${reason}`);
+        });
+
+        socket.on("newPlate", (plateData) => {
+          console.log("New plate received:", plateData);
+          
+          if (initialLoadComplete.current && parseInt(page) === 1) {
+            if (lastAddedPlateId.current !== plateData.id) {
+              lastAddedPlateId.current = plateData.id;
+              
+              setData(prevData => {
+                if (prevData.some(plate => plate.id === plateData.id)) {
+                  return prevData;
+                }
+
+                const newPlate = {
+                  ...plateData,
+                  occurrence_count: plateData.occurrence_count,
+                  tags: plateData.tags || [],
+                };
+                const updatedData = [newPlate, ...prevData];
+                return updatedData.slice(0, parseInt(pageSize));
+              });
+              
+              setTotal(prev => prev + 1);
+            }
+          }
+        });
+
+      } catch (error) {
+        console.error("Socket initialization error:", error);
+        setIsConnected(false);
+        onConnectionChange(false);
+        onConnectionError(error.message);
+      }
+    };
+
+    initializeSocket();
+
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, [onConnectionChange, onConnectionError]);
+
+  // Your existing helper functions
   const createQueryString = useCallback(
     (params) => {
       const current = new URLSearchParams(Array.from(searchParams.entries()));
@@ -82,6 +169,7 @@ export function PlateTableWrapper() {
     [searchParams]
   );
 
+  // Your existing handlers
   const handleAddTag = async (plateNumber, tagName) => {
     const formData = new FormData();
     formData.append("plateNumber", plateNumber);

@@ -130,8 +130,8 @@ function extractPlatesFromMemo(memo) {
         plateNumber = plateNumber.replace(/\[|\]/g, "");
       }
 
-      // Return cleaned plate number in uppercase
-      return plateNumber.toUpperCase();
+      // Remove all spaces and return cleaned plate number in uppercase
+      return plateNumber.replace(/\s+/g, "").toUpperCase();
     })
     .filter((plate) => plate !== null);
 
@@ -160,11 +160,11 @@ export async function POST(req) {
       return Response.json({ error: "Invalid API key" }, { status: 401 });
     }
 
-    // Extract plates either from memo or plate_number
+    // Extract plates either from memo or plate_number, removing spaces in both cases
     const plates = data.memo
       ? extractPlatesFromMemo(data.memo)
       : data.plate_number
-      ? [data.plate_number]
+      ? [data.plate_number.replace(/\s+/g, "").toUpperCase()]
       : [];
 
     if (plates.length === 0) {
@@ -210,13 +210,61 @@ export async function POST(req) {
         [plate, data.Image || null, timestamp]
       );
 
-      if (result.rows.length === 0) {
-        duplicatePlates.push(plate);
-      } else {
+      if (result.rows.length > 0) {
+        // Get the occurrences count using the same query structure as your lib/db.js
+        const occurrencesResult = await dbClient.query(`
+          SELECT 
+            pr.plate_number,
+            COUNT(pr.id) as occurrence_count
+          FROM plate_reads pr
+          WHERE pr.plate_number = $1
+          GROUP BY pr.plate_number
+        `, [plate]);
+
+        console.log('Occurrences query result:', occurrencesResult.rows[0]); // Debug log 1
+
+        // Get the plate tags using your existing schema
+        const tagsResult = await dbClient.query(`
+          SELECT 
+            (
+              SELECT json_agg(tag_info)
+              FROM (
+                SELECT DISTINCT t.name, t.color
+                FROM plate_tags pt2
+                JOIN tags t ON pt2.tag_id = t.id
+                WHERE pt2.plate_number = $1
+              ) tag_info
+            ) as tags,
+            kp.name as known_name
+          FROM plate_reads pr
+          LEFT JOIN known_plates kp ON pr.plate_number = kp.plate_number
+          WHERE pr.plate_number = $1
+          GROUP BY pr.plate_number, kp.name
+        `, [plate]);
+
+        const plateData = {
+          id: result.rows[0].id,
+          plate_number: plate,
+          image_data: data.Image || null,
+          timestamp: timestamp,
+          occurrence_count: parseInt(occurrencesResult.rows[0].occurrence_count),
+          tags: tagsResult.rows[0]?.tags || [],
+          known_name: tagsResult.rows[0]?.known_name || null,
+        };
+
+        console.log('Plate data before emit:', plateData); // Debug log 2
+
+        if (global.io) {
+          console.log('Emitting new plate with tags and known name:', plateData);
+          global.io.emit("newPlate", plateData);
+        }
+
         processedPlates.push({
           plate,
           id: result.rows[0].id,
         });
+      } else {
+        duplicatePlates.push(plate);
       }
     }
 

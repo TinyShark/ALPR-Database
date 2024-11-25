@@ -1,6 +1,12 @@
-import { Radio } from "lucide-react";
+import { Radio, AlertCircle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-export default function BasicTitle({ title, recording, children }) {
+export default function BasicTitle({ title, recording, error, children }) {
   return (
     <div className="flex min-h-screen flex-col py-4 px-6">
       <header className="border-b backdrop-blur">
@@ -9,7 +15,20 @@ export default function BasicTitle({ title, recording, children }) {
             <h1 className="text-2xl font-semibold">
               <span className="flex items-center gap-2">
                 {title}
-                {recording && <Radio className="text-red-500" />}
+                {error ? (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        <AlertCircle className="text-yellow-500" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{error}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                ) : (
+                  recording && <Radio className="text-red-500 animate-pulse" />
+                )}
               </span>
             </h1>
           </div>
