@@ -18,7 +18,7 @@ Remove spaces from API plate numbers before storing in the DB.
 ```
 curl -X PUT "<ipaddress>:3000/api/known-plates" \
 -H "Content-Type: application/json" \
--d '{"plateNumber": "OY65KKE", "name": "John'\''s Car"}'
+-d '{"plateNumber": "AAA123", "name": "John'\''s Car"}'
 ```
 
 ### Delete Plate from Known Plates:
