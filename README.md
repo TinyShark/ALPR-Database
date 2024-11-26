@@ -9,16 +9,20 @@ Remove spaces from API plate numbers before storing in the DB.
 ### Add new API endpoint for Known Plates:
 
 ### Query Known Plate exists:
-`GET <ipaddress>:3000/api/known-plates?plate=AAA123`
+`curl -X GET "<ipaddress>:3000/api/known-plates?plate=AAA123"`
 
 ### Optionally use fuzzy matching to find plates with similar numbers (For OCR misreads):
-`GET <ipaddress>:3000/api/known-plates?plate=AAA123&fuzzy=true`
+`curl -X GET "<ipaddress>:3000/api/known-plates?plate=AAA123&fuzzy=true"`
 
 ### Add Plate to Known Plates:
-`PUT <ipaddress>:3000/api/known-plates`
+```
+curl -X PUT "<ipaddress>:3000/api/known-plates" \
+-H "Content-Type: application/json" \
+-d '{"plateNumber": "OY65KKE", "name": "John'\''s Car"}'
+```
 
 ### Delete Plate from Known Plates:
-`DELETE <ipaddress>:3000/api/known-plates?plate=AAA123`
+`curl -X DELETE "<ipaddress>:3000/api/known-plates?plate=AAA123"`
 
 # ALPR Database
 A Fully-Featured Automated License Plate Recognition Database for Blue Iris + CodeProject AI Server
