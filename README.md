@@ -5,7 +5,8 @@ Added option to add plates to the Known Plates via UI.
 
 Remove spaces from API plate numbers before storing in the DB.
 
-Add new API endpoint for Known Plates:
+
+### Add new API endpoint for Known Plates:
 
 **Query Known Plate exists:**
 GET <ipaddress>:3000/api/known-plates?plate=AAA123
