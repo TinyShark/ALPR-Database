@@ -8,16 +8,16 @@ Remove spaces from API plate numbers before storing in the DB.
 
 ### Add new API endpoint for Known Plates:
 
-## Query Known Plate exists:
+### Query Known Plate exists:
 `GET <ipaddress>:3000/api/known-plates?plate=AAA123`
 
-##Optionally use fuzzy matching to find plates with similar numbers (For OCR misreads):
+### Optionally use fuzzy matching to find plates with similar numbers (For OCR misreads):
 `GET <ipaddress>:3000/api/known-plates?plate=AAA123&fuzzy=true`
 
-##Add Plate to Known Plates:
+### Add Plate to Known Plates:
 `PUT <ipaddress>:3000/api/known-plates`
 
-##Delete Plate from Known Plates:
+### Delete Plate from Known Plates:
 `DELETE <ipaddress>:3000/api/known-plates?plate=AAA123`
 
 # ALPR Database
