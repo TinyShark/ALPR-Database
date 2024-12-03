@@ -1,19 +1,34 @@
 import { NextResponse } from "next/server";
+import { getConfig } from './lib/settings';
 
 export async function middleware(request) {
-  // console.log("\n--- Middleware Start ---");
-  // console.log("URL:", request.nextUrl.pathname);
-  // console.log("Method:", request.method);
-  // console.log("All Cookies:", request.cookies.getAll());
-  // console.log("Session Cookie:", request.cookies.get("session"));
-  // console.log("Headers:", Object.fromEntries(request.headers));
+  // Handle base path for static assets first
+  if (request.nextUrl.pathname.startsWith('/_next/')) {
+    try {
+      const config = await getConfig();
+      const basePath = config.homeassistant?.basePath || '';
+      
+      // Only rewrite if basePath exists, otherwise continue normally
+      if (basePath) {
+        const url = request.nextUrl.clone();
+        if (!url.pathname.startsWith(basePath)) {
+          url.pathname = `${basePath}${url.pathname}`;
+          return NextResponse.rewrite(url);
+        }
+      }
+    } catch (error) {
+      console.error('Base path middleware error:', error);
+    }
+    // If no basePath or any error, continue with normal flow
+    return NextResponse.next();
+  }
 
-  // Allow public paths
+  // Rest of your existing middleware remains unchanged
   const publicPaths = [
     "/login",
     "/_next",
     "/favicon.ico",
-    "/api/plate-reads", // API auth handled in the route itself
+    "/api/plate-reads",
     "/api/verify-session",
     "/api/health-check",
     "/api/verify-key",
@@ -109,7 +124,14 @@ export async function middleware(request) {
     }
 
     console.log("No session cookie block run");
-    return NextResponse.redirect(new URL("/login", request.url));
+    try {
+      const config = await getConfig();
+      const basePath = config.homeassistant?.basePath || '';
+      return NextResponse.redirect(new URL(`${basePath}/login`, request.url));
+    } catch (error) {
+      console.error('Error getting base path for redirect:', error);
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
   }
   try {
     console.log("Verifying session", session.value);
