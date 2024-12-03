@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const { getConfig } = require('./lib/settings');
 
-module.exports = async () => {
+async function getNextConfig() {
   const config = await getConfig();
   return {
     basePath: config.homeassistant?.basePath || "",
@@ -20,4 +20,6 @@ module.exports = async () => {
       ],
     },
   };
-};
+}
+
+module.exports = getNextConfig();
