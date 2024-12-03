@@ -92,6 +92,7 @@ import {
 } from "@/app/actions";
 import Image from "next/image";
 import Link from "next/link";
+import { withBasePath } from "@/lib/utils";
 
 const formatDaysAgo = (days) => {
   if (days === 0) return "Today";
@@ -867,7 +868,7 @@ export default function PlateTable() {
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold">Recent Reads</h3>
                     <Link
-                      href={`/live_feed?search=${plateInsights.plateNumber}`}
+                      href={withBasePath(`/live_feed?search=${plateInsights.plateNumber}`)}
                       passHref
                     >
                       <Button variant="outline" size="sm" asChild>

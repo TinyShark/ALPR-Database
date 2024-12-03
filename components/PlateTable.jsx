@@ -62,6 +62,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { Switch } from "@/components/ui/switch";
+import { withBasePath } from "@/lib/utils";
 
 export default function PlateTable({
   data,
@@ -87,7 +88,7 @@ export default function PlateTable({
 
   // Helper functions
   const getImageUrl = (base64Data) => {
-    if (!base64Data) return "/placeholder-image.jpg";
+    if (!base64Data) return withBasePath("/placeholder-image.jpg");
     if (base64Data.startsWith("data:image/jpeg;base64,")) return base64Data;
     return `data:image/jpeg;base64,${base64Data}`;
   };
@@ -97,13 +98,14 @@ export default function PlateTable({
     if (!plate.image_data) return;
     const win = window.open();
     if (win) {
+      const imageSrc = plate.image_data.startsWith("data:image") 
+        ? plate.image_data 
+        : withBasePath(plate.image_data);
       win.document.write(`
         <html>
-          <head><title>License Plate Image - ${
-            plate.plate_number
-          }</title></head>
+          <head><title>License Plate Image - ${plate.plate_number}</title></head>
           <body style="margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000;">
-            <img src="${getImageUrl(plate.image_data)}" 
+            <img src="${imageSrc}" 
                  style="max-width: 100%; max-height: 100vh; object-fit: contain;" 
                  alt="${plate.plate_number}" />
           </body>

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { loginAction } from "@/app/actions";
+import { withBasePath } from "@/lib/utils";
 
 export default function LoginPage() {
   const [error, setError] = useState("");
@@ -21,7 +22,7 @@ export default function LoginPage() {
         if (result.error) {
           setError(result.error);
         } else if (result.success) {
-          router.push("/dashboard");
+          router.push(withBasePath("/dashboard"));
         }
       } catch (e) {
         setError("An error occurred during login");

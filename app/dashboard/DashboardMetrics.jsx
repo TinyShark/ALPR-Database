@@ -39,6 +39,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import DashboardLayout from "@/components/layout/MainLayout";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { withBasePath } from "@/lib/utils";
 
 const formatTimeRange = (hour) => {
   const formatHour = (h) => {
@@ -341,10 +342,8 @@ export default function DashboardMetrics() {
                       </div>
                     </div>
                     <Link
-                      href={{
-                        pathname: "/live_feed",
-                        query: { search: plate.plate },
-                      }}
+                      href={withBasePath("/live_feed")}
+                      query={{ search: plate.plate }}
                     >
                       <Badge variant="secondary">{plate.count} reads</Badge>
                     </Link>

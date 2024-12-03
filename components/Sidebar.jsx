@@ -10,6 +10,7 @@ import { Cctv } from 'lucide-react'
 import { Flag } from 'lucide-react'
 import { BellPlus } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { withBasePath } from "@/lib/utils"
 
 const topSidebarItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
@@ -33,7 +34,7 @@ export function Sidebar() {
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  onClick={() => router.push(item.href)}
+                  onClick={() => router.push(withBasePath(item.href))}
                   className={cn(
                     "w-10 h-10 p-0 hover:bg-transparent [&:not(:disabled)]:hover:bg-transparent",
                     pathname === item.href ? "text-blue-500" : "hover:text-blue-500"
@@ -54,7 +55,7 @@ export function Sidebar() {
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                onClick={() => router.push('/settings')}
+                onClick={() => router.push(withBasePath('/settings'))}
                 className={cn(
                   "w-10 h-10 p-0 hover:bg-transparent [&:not(:disabled)]:hover:bg-transparent",
                   pathname === '/settings' ? "text-blue-500" : "hover:text-blue-500"

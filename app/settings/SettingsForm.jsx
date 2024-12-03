@@ -54,7 +54,6 @@ export default function SettingsForm({ initialSettings, initialApiKey }) {
     setError("");
     setSuccess(false);
 
-    // Only include the fields from the current section in the form data
     const newFormData = new FormData();
 
     switch (activeSection) {
@@ -91,6 +90,7 @@ export default function SettingsForm({ initialSettings, initialApiKey }) {
         break;
       case "homeassistant":
         newFormData.append("haEnabled", formData.get("haEnabled") === "on");
+        newFormData.append("haBasePath", formData.get("haBasePath"));
         if (formData.get("haWhitelist")) {
           newFormData.append("haWhitelist", formData.get("haWhitelist"));
         }
@@ -351,10 +351,23 @@ export default function SettingsForm({ initialSettings, initialApiKey }) {
 
   const renderHomeAssistantSection = () => (
     <div key="homeassistant-section" className="space-y-4">
-      <h3 className="text-lg font-semibold">
-        HomeAssistant iframe Login Bypass (Insecure)
-      </h3>
+      <h3 className="text-lg font-semibold">Home Assistant Integration</h3>
       <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="haBasePath">Base Path</Label>
+          <Input
+            id="haBasePath"
+            name="haBasePath"
+            type="text"
+            defaultValue={initialSettings.homeassistant?.basePath}
+            placeholder="/alpr"
+            autoComplete="off"
+          />
+          <p className="text-sm text-muted-foreground">
+            Set the base path for Home Assistant ingress integration (e.g., /alpr). Leave empty for standalone use.
+          </p>
+        </div>
+
         <div className="flex items-center justify-between py-2">
           <div className="space-y-0.5">
             <Label htmlFor="haEnabled" className="font-semibold">
