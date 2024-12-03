@@ -1,25 +1,29 @@
 /** @type {import('next').NextConfig} */
 const { getConfig } = require('./lib/settings');
 
-async function getNextConfig() {
-  const config = await getConfig();
-  return {
-    basePath: config.homeassistant?.basePath || "",
-    outputFileTracingIncludes: {
-      "/**": [
-        "/.next",
-        "/public",
-        "/app",
-        "/lib",
-        "/components",
-        "/config",
-        "/middleware.js",
-        "/hooks",
-        "/auth",
-        "/package.json",
-      ],
-    },
-  };
+const nextConfig = {
+  outputFileTracingIncludes: {
+    "/**": [
+      "/.next",
+      "/public",
+      "/app",
+      "/lib",
+      "/components",
+      "/config",
+      "/middleware.js",
+      "/hooks",
+      "/auth",
+      "/package.json",
+    ],
+  },
+};
+
+// Initialize config with base path
+if (getConfig && typeof getConfig === 'function') {
+  const config = getConfig();
+  if (config.homeassistant?.basePath) {
+    nextConfig.basePath = config.homeassistant.basePath;
+  }
 }
 
-module.exports = getNextConfig();
+module.exports = nextConfig;
