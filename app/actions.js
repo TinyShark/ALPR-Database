@@ -29,12 +29,15 @@ import {
   getDistinctCameraNames,
   updatePlateRead,
   updateAllPlateReads,
+  removeMisread,
 } from "@/lib/db";
 import {
   getNotificationPlates as getNotificationPlatesDB,
   addNotificationPlate as addNotificationPlateDB,
   toggleNotification as toggleNotificationDB,
   deleteNotification as deleteNotificationDB,
+  addKnownPlateWithMisreads as addKnownPlateWithMisreadsDB,
+  getAllPlatesWithKnownInfo as getAllPlatesWithKnownInfoDB,
 } from "@/lib/db";
 
 import { revalidatePath } from "next/cache";
@@ -50,6 +53,7 @@ import {
   hashPassword,
   createSession,
 } from "@/lib/auth";
+import * as db from "@/lib/db";
 
 export async function handleGetTags() {
   return await dbGetTags();
@@ -141,7 +145,7 @@ export async function deletePlate(formData) {
     return { success: true };
   } catch (error) {
     console.error("Error removing known plate:", error);
-    return { success: false, error: "Failed to remove plate" };
+    return { success: false, error: "Failed to remove known plate" };
   }
 }
 
@@ -682,5 +686,72 @@ export async function correctPlateRead(formData) {
   } catch (error) {
     console.error("Error correcting plate read:", error);
     return { success: false, error: "Failed to correct plate read" };
+  }
+}
+
+export async function addKnownPlateWithMisreads(formData) {
+  try {
+    const plateNumber = formData.get("plateNumber");
+    const name = formData.get("name");
+    const notes = formData.get("notes") || null;
+    const misreads = JSON.parse(formData.get("misreads") || "[]");
+
+    const plate = await addKnownPlateWithMisreadsDB({
+      plateNumber,
+      name,
+      notes,
+      misreads,
+    });
+
+    return { success: true, data: plate };
+  } catch (error) {
+    console.error("Error adding known plate with misreads:", error);
+    return { success: false, error: "Failed to add known plate with misreads" };
+  }
+}
+
+export async function deleteMisread(formData) {
+  try {
+    const plateNumber = formData.get("plateNumber");
+    await removeMisread(plateNumber);
+    return { success: true };
+  } catch (error) {
+    console.error("Error removing misread:", error);
+    return { success: false, error: "Failed to remove misread" };
+  }
+}
+
+export async function getAllPlatesWithKnownInfo({
+  page = 1,
+  pageSize = 10,
+  sortField = 'first_seen_at',
+  sortOrder = 'DESC',
+  filters = {}
+} = {}) {
+  try {
+    const dbFilters = {
+      ...filters,
+      dateFrom: filters.dateFrom || null,
+      dateTo: filters.dateTo || null
+    };
+
+    const result = await db.getAllPlatesWithKnownInfo({
+      page,
+      pageSize,
+      sortField,
+      sortOrder,
+      filters: dbFilters
+    });
+
+    return {
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+      appliedSort: { field: sortField, order: sortOrder },
+      appliedFilters: filters
+    };
+  } catch (error) {
+    console.error('Error in getAllPlatesWithKnownInfo action:', error);
+    return { success: false, error: error.message };
   }
 }

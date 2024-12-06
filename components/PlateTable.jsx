@@ -387,10 +387,21 @@ export default function PlateTable({
                         plate.flagged && "text-[#F31260]"
                       }`}
                     >
-                      {plate.plate_number}
-                      {plate.known_name && (
+                      {plate.knownPlate ? (
+                        <>
+                          <div>{plate.knownPlate}</div>
+                          {plate.plate_number !== plate.knownPlate && (
+                            <div className="text-sm text-red-500 font-sans">
+                              Actual read: {plate.plate_number}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        plate.plate_number
+                      )}
+                      {(plate.parent_known_name || plate.known_name) && (
                         <div className="text-sm text-gray-500 dark:text-gray-400 font-sans">
-                          {plate.known_name}
+                          {plate.parent_known_name || plate.known_name}
                         </div>
                       )}
                     </TableCell>
@@ -398,8 +409,8 @@ export default function PlateTable({
                     <TableCell>{plate.occurrence_count}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {plate.tags?.length > 0 ? (
-                          plate.tags.map((tag) => (
+                        {(plate.parent_tags?.length > 0 || plate.tags?.length > 0) ? (
+                          (plate.parent_tags || plate.tags).map((tag) => (
                             <Badge
                               key={tag.name}
                               variant="secondary"

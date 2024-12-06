@@ -12,11 +12,7 @@ export default async function KnownPlatesPage() {
   return (
     <DashboardLayout>
       <BasicTitle title="Known Plates">
-        {knownPlates.length > 0 ? (
-          <KnownPlatesTable initialData={knownPlates} />
-        ) : (
-          <p>No known plates found in the database.</p>
-        )}
+        <KnownPlatesTable initialData={knownPlates} />
       </BasicTitle>
     </DashboardLayout>
   );

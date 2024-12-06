@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Search,
   Filter,
@@ -16,6 +16,9 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ArrowRightIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,6 +95,8 @@ import {
 } from "@/app/actions";
 import Image from "next/image";
 import Link from "next/link";
+import { Fragment } from "react";
+import { format, parseISO } from "date-fns";
 
 const formatDaysAgo = (days) => {
   if (days === 0) return "Today";
@@ -148,12 +153,31 @@ const isWithinDateRange = (firstSeenDate, selectedDateRange) => {
   );
 };
 
-export default function PlateTable() {
-  const [data, setData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
+const PAGE_SIZE_OPTIONS = [
+  { value: "10", label: "10 per page" },
+  { value: "25", label: "25 per page" },
+  { value: "50", label: "50 per page" },
+  { value: "100", label: "100 per page" },
+];
+
+export default function PlateDbTable({ 
+  initialData = [], 
+  loading = false,
+  filters,
+  sort,
+  onUpdateFilters,
+  pagination = {
+    page: 1,
+    pageSize: 25,
+    total: 0,
+    onNextPage: () => {},
+    onPreviousPage: () => {},
+    onPageSizeChange: () => {},
+  }
+}) {
+  const [data, setData] = useState(initialData);
+  const [filteredData, setFilteredData] = useState(initialData);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedTag, setSelectedTag] = useState("all");
-  const [selectedDateRange, setSelectedDateRange] = useState(null);
   const [isAddKnownPlateOpen, setIsAddKnownPlateOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [activePlate, setActivePlate] = useState(null);
@@ -161,79 +185,44 @@ export default function PlateTable() {
   const [availableTags, setAvailableTags] = useState([]);
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
   const [plateInsights, setPlateInsights] = useState(null);
-  const [date, setDate] = useState({ from: undefined, to: undefined });
   const [sortConfig, setSortConfig] = useState({
     key: "last_seen_at", // default sort by last seen
     direction: "desc", // default newest first
   });
+  const [expandedPlates, setExpandedPlates] = useState(new Set());
 
   useEffect(() => {
-    const loadData = async () => {
-      const result = await getPlates();
-      if (result.success) {
-        setData(result.data);
-        setFilteredData(result.data);
-      }
-    };
-    loadData();
-  }, []);
+    setData(initialData);
+    setFilteredData(initialData);
+  }, [initialData]);
 
   useEffect(() => {
-    const loadTags = async () => {
-      const result = await getTags();
-      if (result.success) {
-        setAvailableTags(result.data);
-      }
-    };
-    loadTags();
-  }, []);
-
-  useEffect(() => {
-    // console.log("Filtering data...");
     const filtered = data.filter((plate) => {
-      const firstSeenDate = new Date(plate.first_seen_at);
-      const withinDateRange = isWithinDateRange(
-        firstSeenDate,
-        selectedDateRange
+      // Search filter
+      const matchesSearch = searchTerm === "" || Boolean(
+        plate.plate_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        plate.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        plate.notes?.toLowerCase().includes(searchTerm.toLowerCase())
       );
-      // console.log("Is within date range:", withinDateRange);
 
-      return (
-        withinDateRange &&
-        (searchTerm === "" ||
-          plate.plate_number
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase())) &&
-        (selectedTag === "all" ||
-          plate.tags?.some((tag) => tag.name === selectedTag))
+      // Tag filter
+      const matchesTag = filters.tag === "all" || Boolean(
+        plate.tags?.some(tag => tag.name === filters.tag)
       );
+
+      // Date filter
+      const matchesDate = !filters.dateRange?.from || !filters.dateRange?.to || Boolean(
+        (!filters.dateRange.from || new Date(plate.first_seen_at) >= filters.dateRange.from) &&
+        (!filters.dateRange.to || new Date(plate.first_seen_at) <= filters.dateRange.to)
+      );
+
+      const includeInResults = Boolean(matchesSearch && matchesTag && matchesDate);
+
+      return includeInResults;
     });
 
-    const sorted = [...filtered].sort((a, b) => {
-      switch (sortConfig.key) {
-        case "occurrence_count":
-          return sortConfig.direction === "asc"
-            ? a.occurrence_count - b.occurrence_count
-            : b.occurrence_count - a.occurrence_count;
-        case "first_seen_at":
-          return sortConfig.direction === "asc"
-            ? new Date(a.first_seen_at) - new Date(b.first_seen_at)
-            : new Date(b.first_seen_at) - new Date(a.first_seen_at);
-        case "last_seen_at":
-          return sortConfig.direction === "asc"
-            ? a.days_since_last_seen - b.days_since_last_seen
-            : b.days_since_last_seen - a.days_since_last_seen;
-        case "plate_number":
-          return sortConfig.direction === "asc"
-            ? a.plate_number.localeCompare(b.plate_number)
-            : b.plate_number.localeCompare(a.plate_number);
-        default:
-          return 0;
-      }
-    });
-
-    setFilteredData(sorted);
-  }, [data, searchTerm, selectedTag, selectedDateRange, sortConfig]);
+    setFilteredData(filtered);
+  }, [data, searchTerm, filters.tag, filters.dateRange]);
 
   const requestSort = (key) => {
     setSortConfig((prevConfig) => ({
@@ -356,9 +345,10 @@ export default function PlateTable() {
     }
   };
 
-  const handleOpenInsights = async (plateNumber) => {
+  const handleOpenInsights = async (plate) => {
     try {
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const plateNumber = plate.parent_plate_number || plate.plate_number;
       const result = await fetchPlateInsights(plateNumber, timeZone);
       if (result.success) {
         setPlateInsights(result.data);
@@ -388,6 +378,155 @@ export default function PlateTable() {
     }
   };
 
+  const groupedData = useMemo(() => {
+    if (!Array.isArray(data)) {
+      console.log('Data is invalid:', data);
+      return [];
+    }
+
+    const groups = new Map();
+    
+    // First, add all parent plates and plates without parents
+    data.forEach(plate => {
+      if (!plate) return;
+      
+      // If this plate has a parent_plate_number, it's a misread - skip it for now
+      if (plate.parent_plate_number) {
+        return;
+      }
+
+      // Add the plate as a potential parent
+      groups.set(plate.plate_number, {
+        ...plate,
+        misreads: [],
+        total_occurrence_count: parseInt(plate.occurrence_count || 0),
+        // Preserve any known plate data that might exist
+        name: plate.parent_name || plate.name,
+        notes: plate.parent_notes || plate.notes,
+        tags: plate.parent_tags || plate.tags
+      });
+    });
+
+    // Then, add misreads to their parent plates
+    data.forEach(plate => {
+      if (!plate || !plate.parent_plate_number) return;
+
+      // If the parent exists in our current data, add the misread to it
+      if (groups.has(plate.parent_plate_number)) {
+        const parentPlate = groups.get(plate.parent_plate_number);
+        parentPlate.misreads.push(plate);
+        parentPlate.total_occurrence_count += parseInt(plate.occurrence_count || 0);
+      } else {
+        // If the parent doesn't exist in our current data but is a known plate,
+        // create a new group for it
+        groups.set(plate.parent_plate_number, {
+          plate_number: plate.parent_plate_number,
+          name: plate.parent_name,
+          notes: plate.parent_notes,
+          tags: plate.parent_tags || [],
+          misreads: [plate],
+          total_occurrence_count: parseInt(plate.occurrence_count || 0),
+          first_seen_at: plate.first_seen_at,
+          days_since_last_seen: plate.days_since_last_seen
+        });
+      }
+    });
+
+    const result = Array.from(groups.values());
+    return result;
+  }, [data]);
+
+  const toggleExpand = (plateNumber, e) => {
+    e.stopPropagation();
+    setExpandedPlates(prev => {
+      const next = new Set(prev);
+      if (next.has(plateNumber)) {
+        next.delete(plateNumber);
+      } else {
+        next.add(plateNumber);
+      }
+      return next;
+    });
+  };
+
+  const handleSearch = (e) => {
+    setSearchTerm(e.target.value);
+  };
+
+  const handleTagFilter = (value) => {
+    onUpdateFilters.onTagClick(value);
+  };
+
+  const handleDateRangeChange = (range) => {
+    onUpdateFilters.onDateRangeChange(range);
+  };
+
+  // Load tags
+  useEffect(() => {
+    const loadTags = async () => {
+      const result = await getTags();
+      if (result.success) {
+        setAvailableTags(result.data);
+      }
+    };
+    loadTags();
+  }, []);
+
+  // Filtering logic
+  useEffect(() => {
+    const filtered = data.filter((plate) => {
+      // Skip plates that are misreads in the initial filter
+      // as they'll be handled through their parents
+      if (plate.parent_plate_number) return false;
+
+      // Search filter - check plate and its misreads
+      const matchesSearch = searchTerm === "" || Boolean(
+        plate.plate_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        plate.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        plate.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        // Add this check for misreads
+        data.some(misread => 
+          misread.parent_plate_number === plate.plate_number &&
+          misread.plate_number.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      );
+
+      // Tag filter
+      const matchesTag = filters.tag === "all" || Boolean(
+        plate.tags?.some(tag => tag.name === filters.tag)
+      );
+
+      // Date filter
+      const matchesDate = !filters.dateRange?.from || !filters.dateRange?.to || Boolean(
+        (!filters.dateRange.from || new Date(plate.first_seen_at) >= filters.dateRange.from) &&
+        (!filters.dateRange.to || new Date(plate.first_seen_at) <= filters.dateRange.to)
+      );
+
+      return matchesSearch && matchesTag && matchesDate;
+    });
+
+    const groupedData = filtered.map(plate => {
+      // When searching, include all misreads that match the search term
+      const misreads = data.filter(misread => 
+        misread.parent_plate_number === plate.plate_number &&
+        (searchTerm === "" || 
+         misread.plate_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+         plate.plate_number.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+
+      const totalOccurrenceCount = parseInt(plate.occurrence_count || 0) + 
+        misreads.reduce((sum, misread) => sum + parseInt(misread.occurrence_count || 0), 0);
+
+      return {
+        ...plate,
+        misreads: misreads,
+        total_occurrence_count: totalOccurrenceCount
+      };
+    });
+
+    setFilteredData(groupedData);
+  }, [data, searchTerm, filters.tag, filters.dateRange]);
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -396,18 +535,18 @@ export default function PlateTable() {
           <Input
             placeholder="Search plates, names, or notes..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={handleSearch}
             className="w-64"
           />
         </div>
         <div className="flex items-center space-x-2">
           <Filter className="text-gray-400 dark:text-gray-500" />
-          <Select value={selectedTag} onValueChange={setSelectedTag}>
+          <Select value={filters.tag} onValueChange={onUpdateFilters.onTagClick}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Filter by tag" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All tags</SelectItem>
+              <SelectItem value="all">All Tags</SelectItem>
               {availableTags.map((tag) => (
                 <SelectItem key={tag.name} value={tag.name}>
                   <div className="flex items-center">
@@ -423,17 +562,15 @@ export default function PlateTable() {
           </Select>
           <Popover>
             <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-[240px] justify-start text-left font-normal"
-              >
+              <Button variant="outline" className="justify-start text-left font-normal">
                 <Calendar className="mr-2 h-4 w-4" />
-                {selectedDateRange &&
-                selectedDateRange[0] &&
-                selectedDateRange[1] ? (
-                  `${selectedDateRange[0].toDateString()} - ${selectedDateRange[1].toDateString()}`
+                {filters.dateFrom && filters.dateTo ? (
+                  <>
+                    {format(parseISO(filters.dateFrom), "LLL dd, y")} -{" "}
+                    {format(parseISO(filters.dateTo), "LLL dd, y")}
+                  </>
                 ) : (
-                  <span>Filter by date range</span>
+                  <span>Date Range</span>
                 )}
               </Button>
             </PopoverTrigger>
@@ -441,209 +578,271 @@ export default function PlateTable() {
               <CalendarComponent
                 initialFocus
                 mode="range"
-                defaultMonth={date?.from}
-                selected={date}
+                selected={{
+                  from: filters.dateFrom ? parseISO(filters.dateFrom) : undefined,
+                  to: filters.dateTo ? parseISO(filters.dateTo) : undefined
+                }}
                 onSelect={(range) => {
-                  if (range && range.from) {
-                    // Ensure range.to is optional and correctly handled
-                    setDate({ from: range.from, to: range.to || undefined });
+                  console.log("Date selected:", range); // Debug log
+                  if (!range?.from || !range?.to) {
+                    console.log("Missing from or to date"); // Debug log
+                    return;
                   }
+                  console.log("Calling onDateRangeChange with:", range); // Debug log
+                  onUpdateFilters.onDateRangeChange({
+                    from: range.from,
+                    to: range.to
+                  });
                 }}
                 numberOfMonths={2}
               />
             </PopoverContent>
           </Popover>
-          {selectedDateRange &&
-            selectedDateRange[0] &&
-            selectedDateRange[1] && (
-              <Button
-                variant="ghost"
-                onClick={() => setSelectedDateRange([null, null])}
-              >
-                <X className="h-4 w-4" />
-                <span className="sr-only">Clear date range</span>
-              </Button>
-            )}
+          {(filters.dateFrom || filters.dateTo) && (
+            <Button
+              variant="ghost"
+              onClick={() => onUpdateFilters.onDateRangeChange(null)}
+            >
+              <X className="h-4 w-4" />
+              <span className="sr-only">Clear date range</span>
+            </Button>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Show</span>
+          <Select
+            value={pagination.pageSize.toString()}
+            onValueChange={pagination.onPageSizeChange}
+          >
+            <SelectTrigger className="w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <div className="rounded-md border dark:border-gray-700">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[180px]">
-                <Button
-                  variant="ghost"
-                  onClick={() => requestSort("plate_number")}
-                  className="h-8 flex items-center font-semibold p-0"
-                >
-                  Plate Number
-                  {getSortIcon("plate_number")}
-                </Button>
+              <TableHead className="w-[30px]"></TableHead>
+              <TableHead 
+                className="cursor-pointer"
+                onClick={() => onUpdateFilters.onSort('plate_number')}
+              >
+                Plate Number {getSortIcon('plate_number')}
               </TableHead>
-              <TableHead className="w-[140px]">
-                <Button
-                  variant="ghost"
-                  onClick={() => requestSort("occurrence_count")}
-                  className="h-8 flex items-center font-semibold p-0"
-                >
-                  Seen
-                  {getSortIcon("occurrence_count")}
-                </Button>
+              <TableHead 
+                className="cursor-pointer"
+                onClick={() => onUpdateFilters.onSort('occurrence_count')}
+              >
+                Seen {getSortIcon('occurrence_count')}
               </TableHead>
               <TableHead className="w-56 2xl:w-96">Name</TableHead>
               <TableHead>Notes</TableHead>
-              <TableHead className="w-[140px]">
-                <Button
-                  variant="ghost"
-                  onClick={() => requestSort("first_seen_at")}
-                  className="h-8 flex items-center font-semibold p-0"
-                >
-                  First Seen
-                  {getSortIcon("first_seen_at")}
-                </Button>
+              <TableHead 
+                className="cursor-pointer"
+                onClick={() => onUpdateFilters.onSort('first_seen_at')}
+              >
+                First Seen {getSortIcon('first_seen_at')}
               </TableHead>
-              <TableHead className="w-[140px]">
-                <Button
-                  variant="ghost"
-                  onClick={() => requestSort("last_seen_at")}
-                  className="h-8 flex items-center font-semibold p-0"
-                >
-                  Last Seen
-                  {getSortIcon("last_seen_at")}
-                </Button>
+              <TableHead 
+                className="cursor-pointer"
+                onClick={() => onUpdateFilters.onSort('last_seen_at')}
+              >
+                Last Seen {getSortIcon('last_seen_at')}
               </TableHead>
               <TableHead className="w-[150px]">Tags</TableHead>
-              <TableHead className="w-[120px] text-right">Actions</TableHead>
+              <TableHead className="w-[120px] text-left">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredData.map((plate) => (
-              <TableRow key={plate.plate_number}>
-                <TableCell className="font-mono text-lg font-medium">
-                  <span
-                    className={`px-2 cursor-pointer transition-colors duration-200
-                        ${plate.flagged ? "text-[#F31260]" : "text-primary"}
-                        hover:underline`}
-                    onClick={() => handleOpenInsights(plate.plate_number)}
-                  >
-                    {plate.plate_number}
-                  </span>
-                </TableCell>
-                <TableCell>{plate.occurrence_count}</TableCell>
-                <TableCell>{plate.name}</TableCell>
-                <TableCell>{plate.notes}</TableCell>
-                <TableCell>
-                  {new Date(plate.first_seen_at).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  {formatDaysAgo(plate.days_since_last_seen)}
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {plate.tags?.length > 0 ? (
-                      plate.tags.map((tag) => (
+              <Fragment key={plate.plate_number}>
+                <TableRow 
+                  className={`border-b transition-colors hover:bg-zinc-200 data-[state=selected]:bg-zinc-200 dark:hover:bg-zinc-800/50 dark:data-[state=selected]:bg-zinc-800/50 ${
+                    expandedPlates.has(plate.plate_number) ? 'bg-zinc-200 dark:bg-zinc-800/50' : ''
+                  } ${plate.misreads?.length > 0 ? 'cursor-pointer' : ''} ${
+                    plate.flagged ? "text-[#F31260]" : ""
+                  }`}
+                  onClick={(e) => plate.misreads?.length > 0 && toggleExpand(plate.plate_number, e)}
+                >
+                  <TableCell className="w-[30px]">
+                    {plate.misreads?.length > 0 && (
+                      expandedPlates.has(plate.plate_number) ? 
+                        <ChevronDownIcon className="h-4 w-4" /> : 
+                        <ChevronRightIcon className="h-4 w-4" />
+                    )}
+                  </TableCell>
+                  <TableCell className="font-mono">
+                    <div className="flex items-center space-x-2">
+                      <span 
+                        className="cursor-pointer hover:underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenInsights(plate);
+                        }}
+                      >
+                        {plate.plate_number}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {plate.misreads?.length > 0 ? plate.total_occurrence_count : plate.occurrence_count}
+                  </TableCell>
+                  <TableCell>{plate.parent_name || plate.name}</TableCell>
+                  <TableCell>{plate.parent_notes || plate.notes}</TableCell>
+                  <TableCell>
+                    {new Date(plate.first_seen_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    {formatDaysAgo(plate.days_since_last_seen)}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {((plate.parent_tags?.length > 0 ? plate.parent_tags : plate.tags) || []).map((tag) => (
                         <Badge
-                          key={tag.name}
+                          key={`${plate.plate_number}-${tag.name}`}
                           variant="secondary"
                           className="text-xs py-0.5 pl-2 pr-1 flex items-center space-x-1"
-                          style={{ backgroundColor: tag.color, color: "#fff" }}
+                          style={{
+                            backgroundColor: tag.color,
+                            color: "#fff",
+                          }}
                         >
                           <span>{tag.name}</span>
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-4 w-4 p-0 hover:bg-red-500 hover:text-white rounded-full"
-                            onClick={() =>
-                              handleRemoveTag(plate.plate_number, tag.name)
-                            }
+                            onClick={() => handleRemoveTag(plate.plate_number, tag.name)}
                           >
                             <X className="h-3 w-3" />
-                            <span className="sr-only">
-                              Remove {tag.name} tag
-                            </span>
+                            <span className="sr-only">Remove {tag.name} tag</span>
                           </Button>
                         </Badge>
-                      ))
-                    ) : (
-                      <div className="text-sm text-gray-500 dark:text-gray-400 italic">
-                        No tags
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end space-x-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <Tag className="h-4 w-4" />
+                            <span className="sr-only">Add tag</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {availableTags.map((tag) => (
+                            <DropdownMenuItem
+                              key={tag.name}
+                              onClick={() =>
+                                handleAddTag(plate.plate_number, tag.name)
+                              }
+                            >
+                              <div className="flex items-center">
+                                <div
+                                  className="w-3 h-3 rounded-full mr-2"
+                                  style={{ backgroundColor: tag.color }}
+                                />
+                                {tag.name}
+                              </div>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setActivePlate(plate);
+                          setIsAddKnownPlateOpen(true);
+                        }}
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span className="sr-only">Add to known plates</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={
+                          plate.flagged ? "text-red-500 hover:text-red-700" : ""
+                        }
+                        onClick={() =>
+                          handleToggleFlag(plate.plate_number, !plate.flagged)
+                        }
+                      >
+                        <Flag
+                          className={`h-4 w-4 ${
+                            plate.flagged ? "fill-current" : ""
+                          }`}
+                        />
+                        <span className="sr-only">
+                          {plate.flagged ? "Remove flag" : "Add flag"}
+                        </span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => {
+                          setActivePlate(plate);
+                          setIsDeleteConfirmOpen(true);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete record</span>
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+
+                {/* Misread Rows - simplified with only delete button */}
+                {expandedPlates.has(plate.plate_number) && plate.misreads?.map(misread => (
+                  <TableRow 
+                    key={misread.plate_number}
+                    className="bg-zinc-100 dark:bg-zinc-800"
+                  >
+                    <TableCell></TableCell>
+                    <TableCell className="font-mono">
+                      <div className="flex items-center gap-2 pl-6">
+                        <ArrowRightIcon className="h-4 w-4 text-muted-foreground" />
+                        {misread.plate_number}
                       </div>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end space-x-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <Tag className="h-4 w-4" />
-                          <span className="sr-only">Add tag</span>
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {availableTags.map((tag) => (
-                          <DropdownMenuItem
-                            key={tag.name}
-                            onClick={() =>
-                              handleAddTag(plate.plate_number, tag.name)
-                            }
-                          >
-                            <div className="flex items-center">
-                              <div
-                                className="w-3 h-3 rounded-full mr-2"
-                                style={{ backgroundColor: tag.color }}
-                              />
-                              {tag.name}
-                            </div>
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setActivePlate(plate);
-                        setIsAddKnownPlateOpen(true);
-                      }}
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span className="sr-only">Add to known plates</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={
-                        plate.flagged ? "text-red-500 hover:text-red-700" : ""
-                      }
-                      onClick={() =>
-                        handleToggleFlag(plate.plate_number, !plate.flagged)
-                      }
-                    >
-                      <Flag
-                        className={`h-4 w-4 ${
-                          plate.flagged ? "fill-current" : ""
-                        }`}
-                      />
-                      <span className="sr-only">
-                        {plate.flagged ? "Remove flag" : "Add flag"}
-                      </span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-red-500 hover:text-red-700"
-                      onClick={() => {
-                        setActivePlate(plate);
-                        setIsDeleteConfirmOpen(true);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="sr-only">Delete record</span>
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
+                    </TableCell>
+                    <TableCell>{misread.occurrence_count || 0}</TableCell>
+                    <TableCell>{misread.parent_name || misread.name}</TableCell>
+                    <TableCell>{misread.parent_notes || misread.notes}</TableCell>
+                    <TableCell>
+                      {new Date(misread.first_seen_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      {formatDaysAgo(misread.days_since_last_seen)}
+                    </TableCell>
+                    <TableCell></TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => handleDeleteMisread(misread.plate_number)}
+                      >
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Delete misread</span>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </Fragment>
             ))}
           </TableBody>
         </Table>
@@ -912,6 +1111,42 @@ export default function PlateTable() {
           )}
         </SheetContent>
       </Sheet>
+
+      <div className="flex items-center justify-between pt-4">
+        <div className="text-sm text-muted-foreground">
+          {console.log('Rendering count:', { initialDataLength: initialData.length, pagination })}
+          {initialData.length > 0 ? (
+            <>
+              Showing{" "}
+              {Math.min((pagination.page - 1) * pagination.pageSize + 1, pagination.total)} to{" "}
+              {Math.min(pagination.page * pagination.pageSize, pagination.total)}{" "}
+              of {pagination.total} results
+            </>
+          ) : loading ? (
+            "Loading..."
+          ) : (
+            "No results found"
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={pagination.onPreviousPage}
+            disabled={pagination.page <= 1}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={pagination.onNextPage}
+            disabled={pagination.page * pagination.pageSize >= pagination.total}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

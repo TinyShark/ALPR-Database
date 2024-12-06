@@ -7,3 +7,6 @@ ALTER TABLE IF EXISTS public.plate_notifications
 
 ALTER TABLE IF EXISTS public.plate_reads 
     ADD COLUMN IF NOT EXISTS camera_name character varying(25);
+
+ALTER TABLE known_plates
+    ADD COLUMN parent_plate_number VARCHAR(20) REFERENCES known_plates(plate_number);
