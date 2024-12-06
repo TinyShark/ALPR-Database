@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import {
   Search,
   Filter,
@@ -95,7 +95,6 @@ import {
 } from "@/app/actions";
 import Image from "next/image";
 import Link from "next/link";
-import { Fragment } from "react";
 import { format, parseISO } from "date-fns";
 
 const formatDaysAgo = (days) => {
@@ -474,17 +473,20 @@ export default function PlateDbTable({
 
   // Filtering logic
   useEffect(() => {
+    console.log("Starting filtering with data:", data);
+
     const filtered = data.filter((plate) => {
       // Skip plates that are misreads in the initial filter
-      // as they'll be handled through their parents
-      if (plate.parent_plate_number) return false;
+      if (plate.parent_plate_number) {
+        console.log("Skipping misread in initial filter:", plate.plate_number, "parent:", plate.parent_plate_number);
+        return false;
+      }
 
       // Search filter - check plate and its misreads
       const matchesSearch = searchTerm === "" || Boolean(
         plate.plate_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         plate.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         plate.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        // Add this check for misreads
         data.some(misread => 
           misread.parent_plate_number === plate.plate_number &&
           misread.plate_number.toLowerCase().includes(searchTerm.toLowerCase())
@@ -502,28 +504,49 @@ export default function PlateDbTable({
         (!filters.dateRange.to || new Date(plate.first_seen_at) <= filters.dateRange.to)
       );
 
+      console.log("Filtering plate:", plate.plate_number, {
+        matchesSearch,
+        matchesTag,
+        matchesDate
+      });
+
       return matchesSearch && matchesTag && matchesDate;
     });
 
-    const groupedData = filtered.map(plate => {
-      // When searching, include all misreads that match the search term
-      const misreads = data.filter(misread => 
-        misread.parent_plate_number === plate.plate_number &&
-        (searchTerm === "" || 
-         misread.plate_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-         plate.plate_number.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
+    console.log("After filtering, parent plates:", filtered);
 
-      const totalOccurrenceCount = parseInt(plate.occurrence_count || 0) + 
-        misreads.reduce((sum, misread) => sum + parseInt(misread.occurrence_count || 0), 0);
+    // After filtering, group the data
+    const groups = new Map();
+    
+    // First, add all filtered parent plates with their existing misreads
+    filtered.forEach(plate => {
+      if (!plate) return;
+      
+      console.log("Adding parent plate to groups with data:", {
+        plate_number: plate.plate_number,
+        parent_count: parseInt(plate.occurrence_count || 0),
+        misreads: plate.misreads
+      });
 
-      return {
+      const misreadsTotal = plate.misreads?.reduce((sum, misread) => 
+        sum + parseInt(misread.occurrence_count || 0), 0) || 0;
+
+      console.log("Calculated totals:", {
+        plate_number: plate.plate_number,
+        parent_count: parseInt(plate.occurrence_count || 0),
+        misreads_total: misreadsTotal,
+        total: parseInt(plate.occurrence_count || 0)
+      });
+
+      groups.set(plate.plate_number, {
         ...plate,
-        misreads: misreads,
-        total_occurrence_count: totalOccurrenceCount
-      };
+        misreads: plate.misreads || [],
+        total_occurrence_count: parseInt(plate.occurrence_count || 0)
+      });
     });
 
+    const groupedData = Array.from(groups.values());
+    console.log("Final grouped data:", groupedData);
     setFilteredData(groupedData);
   }, [data, searchTerm, filters.tag, filters.dateRange]);
 
@@ -1114,7 +1137,6 @@ export default function PlateDbTable({
 
       <div className="flex items-center justify-between pt-4">
         <div className="text-sm text-muted-foreground">
-          {console.log('Rendering count:', { initialDataLength: initialData.length, pagination })}
           {initialData.length > 0 ? (
             <>
               Showing{" "}
