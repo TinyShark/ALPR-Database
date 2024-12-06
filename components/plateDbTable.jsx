@@ -95,13 +95,31 @@ import {
 } from "@/app/actions";
 import Image from "next/image";
 import Link from "next/link";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, isValid } from "date-fns";
 
-const formatDaysAgo = (days) => {
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days >= 15) return "15+ days ago";
-  return `${days} days ago`;
+const formatDaysAgo = (timestamp) => {
+  if (!timestamp) return '';
+  
+  const now = new Date();
+  const date = new Date(timestamp);
+  const diffInMillis = now - date;
+  const diffInMinutes = Math.floor(diffInMillis / (1000 * 60));
+  const diffInHours = Math.floor(diffInMillis / (1000 * 60 * 60));
+  const diffInDays = Math.floor(diffInMillis / (1000 * 60 * 60 * 24));
+  
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`;
+  }
+  if (diffInHours < 24) {
+    return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`;
+  }
+  if (diffInDays === 1) {
+    return 'Yesterday';
+  }
+  if (diffInDays >= 15) {
+    return '15+ days ago';
+  }
+  return `${diffInDays} days ago`;
 };
 
 const formatTimeRange = (timeRange) => {
@@ -606,15 +624,18 @@ export default function PlateDbTable({
                   to: filters.dateTo ? parseISO(filters.dateTo) : undefined
                 }}
                 onSelect={(range) => {
-                  console.log("Date selected:", range); // Debug log
-                  if (!range?.from || !range?.to) {
-                    console.log("Missing from or to date"); // Debug log
+                  console.log("Date selected:", range);
+                  
+                  // If clearing the date range
+                  if (!range) {
+                    onUpdateFilters.onDateRangeChange(null);
                     return;
                   }
-                  console.log("Calling onDateRangeChange with:", range); // Debug log
+
+                  // Update on each click, allowing single date or date range
                   onUpdateFilters.onDateRangeChange({
                     from: range.from,
-                    to: range.to
+                    to: range.to || range.from // If no end date, use start date
                   });
                 }}
                 numberOfMonths={2}
@@ -724,10 +745,10 @@ export default function PlateDbTable({
                   <TableCell>{plate.parent_name || plate.name}</TableCell>
                   <TableCell>{plate.parent_notes || plate.notes}</TableCell>
                   <TableCell>
-                    {new Date(plate.first_seen_at).toLocaleDateString()}
+                    {plate.first_seen_at ? format(new Date(plate.first_seen_at), 'dd/MM/yyyy') : ''}
                   </TableCell>
                   <TableCell>
-                    {formatDaysAgo(plate.days_since_last_seen)}
+                    {plate.last_seen_at === '0 minutes ago' ? 'Just now' : plate.last_seen_at || ''}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -846,10 +867,18 @@ export default function PlateDbTable({
                     <TableCell>{misread.parent_name || misread.name}</TableCell>
                     <TableCell>{misread.parent_notes || misread.notes}</TableCell>
                     <TableCell>
-                      {new Date(misread.first_seen_at).toLocaleDateString()}
+                      {misread.first_seen_at && misread.occurrence_count > 0 && isValid(new Date(misread.first_seen_at)) ? 
+                        format(new Date(misread.first_seen_at), 'dd/MM/yyyy') : 
+                        ''}
                     </TableCell>
                     <TableCell>
-                      {formatDaysAgo(misread.days_since_last_seen)}
+                      {(() => {
+                        console.log('Misread last_seen_at:', {
+                          value: misread.last_seen_at,
+                          count: misread.occurrence_count
+                        });
+                        return misread.last_seen_at || '';
+                      })()}
                     </TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-right">
