@@ -62,6 +62,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 
 export default function PlateTable({
   data,
@@ -159,8 +160,17 @@ export default function PlateTable({
 
   const handleDeleteSubmit = async () => {
     if (!activePlate) return;
-    await onDeleteRecord(activePlate.plate_number);
-    setIsDeleteConfirmOpen(false);
+    const formData = new FormData();
+    formData.append("readId", activePlate.id);
+    formData.append("plateNumber", activePlate.plate_number);
+
+    const result = await onDeleteRecord(formData);
+    if (result.success) {
+      setIsDeleteConfirmOpen(false);
+      toast.success("Plate read deleted successfully");
+    } else {
+      toast.error("Failed to delete plate read");
+    }
   };
 
   const handleCorrectSubmit = async () => {

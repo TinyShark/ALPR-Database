@@ -72,6 +72,8 @@ export function KnownPlatesTable({ initialData = [] }) {
     tags: [],
   });
   const [expandedPlates, setExpandedPlates] = useState(new Set());
+  const [isDeleteMisreadConfirmOpen, setIsDeleteMisreadConfirmOpen] = useState(false);
+  const [activeMisread, setActiveMisread] = useState(null);
 
   useEffect(() => {
     const loadTags = async () => {
@@ -290,18 +292,20 @@ export function KnownPlatesTable({ initialData = [] }) {
     });
   };
 
-  const handleDeleteMisread = async (misreadPlateNumber) => {
+  const handleDeleteMisread = async () => {
+    if (!activeMisread) return;
     try {
       const formData = new FormData();
-      formData.append("plateNumber", misreadPlateNumber);
+      formData.append("plateNumber", activeMisread.plate_number);
 
       const result = await deleteMisread(formData);
       if (result.success) {
         // Update the data state to remove the misread
         setData((prevData) =>
-          prevData.filter((plate) => plate.plate_number !== misreadPlateNumber)
+          prevData.filter((plate) => plate.plate_number !== activeMisread.plate_number)
         );
-        toast.success(`Known Misread ${misreadPlateNumber} removed successfully`);
+        setIsDeleteMisreadConfirmOpen(false);
+        toast.success(`Known Misread ${activeMisread.plate_number} removed successfully`);
       } else {
         toast.error(result.error || "Failed to remove misread");
       }
@@ -769,7 +773,10 @@ export function KnownPlatesTable({ initialData = [] }) {
                             variant="ghost"
                             size="icon"
                             className="text-red-500 hover:text-red-700"
-                            onClick={() => handleDeleteMisread(misread.plate_number)}
+                            onClick={() => {
+                              setActiveMisread(misread);
+                              setIsDeleteMisreadConfirmOpen(true);
+                            }}
                           >
                             <X className="h-4 w-4" />
                             <span className="sr-only">Remove misread</span>
@@ -939,6 +946,29 @@ export function KnownPlatesTable({ initialData = [] }) {
                   Cancel
                 </Button>
                 <Button variant="destructive" onClick={handleRemoveFromKnown}>
+                  Remove
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isDeleteMisreadConfirmOpen} onOpenChange={setIsDeleteMisreadConfirmOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Remove Misread</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to remove {activeMisread?.plate_number} from known misreads? 
+                  This will only remove it from the known misreads list and won't affect any plate reads in the database.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsDeleteMisreadConfirmOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDeleteMisread}>
                   Remove
                 </Button>
               </DialogFooter>

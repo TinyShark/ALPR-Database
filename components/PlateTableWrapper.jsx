@@ -154,17 +154,30 @@ export function PlateTableWrapper() {
     }
   };
 
-  const handleDeleteRecord = async (plateNumber) => {
-    const formData = new FormData();
-    formData.append("plateNumber", plateNumber);
-
+  const handleDeleteRecord = async (formData) => {
     const result = await deletePlateRead(formData);
     if (result.success) {
-      setData((prevData) =>
-        prevData.filter((plate) => plate.plate_number !== plateNumber)
-      );
-      setTotal((prev) => prev - 1);
+      try {
+        // Refresh the data to get the updated list
+        const platesResult = await getLatestPlateReads({
+          page: parseInt(page),
+          pageSize: parseInt(pageSize),
+          search,
+          fuzzySearch,
+          tag,
+          dateRange: dateFrom && dateTo ? { from: dateFrom, to: dateTo } : null,
+          cameraName,
+        });
+
+        if (platesResult.data) {
+          setData(platesResult.data);
+          setTotal(platesResult.pagination.total);
+        }
+      } catch (error) {
+        console.error("Error refreshing data after delete:", error);
+      }
     }
+    return result;
   };
 
   const handlePageChange = useCallback(

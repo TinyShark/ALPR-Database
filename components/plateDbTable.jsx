@@ -92,6 +92,7 @@ import {
   fetchPlateInsights,
   alterPlateFlag,
   deletePlateFromDB,
+  deleteMisreadFromDB,
 } from "@/app/actions";
 import Image from "next/image";
 import Link from "next/link";
@@ -216,6 +217,8 @@ export default function PlateDbTable({
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
   const [plateInsights, setPlateInsights] = useState(null);
   const [expandedPlates, setExpandedPlates] = useState(new Set());
+  const [isDeleteMisreadConfirmOpen, setIsDeleteMisreadConfirmOpen] = useState(false);
+  const [activeMisread, setActiveMisread] = useState(null);
 
   useEffect(() => {
     setData(initialData);
@@ -400,20 +403,64 @@ export default function PlateDbTable({
     }
   };
 
+  const handleDeleteMisread = async () => {
+    if (!activeMisread) return;
+    try {
+      const formData = new FormData();
+      formData.append("plateNumber", activeMisread.plate_number);
+
+      const result = await deleteMisreadFromDB(formData);
+      if (result.success) {
+        // Update the local state to remove the misread
+        setData((prevData) =>
+          prevData.map((plate) => {
+            if (plate.misreads?.some(m => m.plate_number === activeMisread.plate_number)) {
+              return {
+                ...plate,
+                misreads: plate.misreads.filter(m => m.plate_number !== activeMisread.plate_number),
+                total_occurrence_count: plate.total_occurrence_count - 
+                  (plate.misreads.find(m => m.plate_number === activeMisread.plate_number)?.occurrence_count || 0)
+              };
+            }
+            return plate;
+          })
+        );
+        setIsDeleteMisreadConfirmOpen(false);
+        toast.success(`Deleted misread ${activeMisread.plate_number}`);
+      }
+    } catch (error) {
+      console.error("Failed to delete misread:", error);
+      toast.error("Failed to delete misread");
+    }
+  };
+
   const groupedData = useMemo(() => {
     if (!Array.isArray(data)) {
       console.log('Data is invalid:', data);
       return [];
     }
 
+    // Log initial data to see what we're working with
+    console.log('Initial data structure:', data.map(plate => ({
+      plate_number: plate.plate_number,
+      parent_plate_number: plate.parent_plate_number,
+      occurrence_count: plate.occurrence_count,
+      is_misread: Boolean(plate.parent_plate_number)
+    })));
+
     const groups = new Map();
     
-    // First, add all parent plates and plates without parents
+    // First pass: Collect all plates and their misreads
     data.forEach(plate => {
       if (!plate) return;
-      
-      // If this plate has a parent_plate_number, it's a misread - skip it for now
+
+      // If this is a misread (has parent_plate_number), store it for later processing
       if (plate.parent_plate_number) {
+        console.log('Found misread:', {
+          misread: plate.plate_number,
+          parent: plate.parent_plate_number,
+          count: plate.occurrence_count
+        });
         return;
       }
 
@@ -422,39 +469,58 @@ export default function PlateDbTable({
         ...plate,
         misreads: [],
         total_occurrence_count: parseInt(plate.occurrence_count || 0),
-        // Preserve any known plate data that might exist
         name: plate.parent_name || plate.name,
         notes: plate.parent_notes || plate.notes,
         tags: plate.parent_tags || plate.tags
       });
     });
 
-    // Then, add misreads to their parent plates
+    // Second pass: Process misreads
     data.forEach(plate => {
-      if (!plate || !plate.parent_plate_number) return;
+      if (!plate?.parent_plate_number) return;
 
-      // If the parent exists in our current data, add the misread to it
+      const occurrenceCount = parseInt(plate.occurrence_count || '0');
+      
+      // Skip if occurrence count is 0 or invalid
+      if (!occurrenceCount || occurrenceCount <= 0) {
+        console.log('Skipping zero-count misread:', {
+          plate: plate.plate_number,
+          parent: plate.parent_plate_number,
+          count: occurrenceCount
+        });
+        return;
+      }
+
+      // Add valid misread to parent
       if (groups.has(plate.parent_plate_number)) {
         const parentPlate = groups.get(plate.parent_plate_number);
-        parentPlate.misreads.push(plate);
-        parentPlate.total_occurrence_count += parseInt(plate.occurrence_count || 0);
-      } else {
-        // If the parent doesn't exist in our current data but is a known plate,
-        // create a new group for it
-        groups.set(plate.parent_plate_number, {
-          plate_number: plate.parent_plate_number,
-          name: plate.parent_name,
-          notes: plate.parent_notes,
-          tags: plate.parent_tags || [],
-          misreads: [plate],
-          total_occurrence_count: parseInt(plate.occurrence_count || 0),
-          first_seen_at: plate.first_seen_at,
-          days_since_last_seen: plate.days_since_last_seen
+        console.log('Adding valid misread to parent:', {
+          misread: plate.plate_number,
+          parent: plate.parent_plate_number,
+          count: occurrenceCount
         });
+        
+        parentPlate.misreads.push({
+          ...plate,
+          occurrence_count: occurrenceCount
+        });
+        parentPlate.total_occurrence_count += occurrenceCount;
       }
     });
 
     const result = Array.from(groups.values());
+    
+    // Log final structure before returning
+    console.log('Final structure:', result.map(plate => ({
+      plate_number: plate.plate_number,
+      total_count: plate.total_occurrence_count,
+      misreads_count: plate.misreads.length,
+      misreads: plate.misreads.map(m => ({
+        plate: m.plate_number,
+        count: m.occurrence_count
+      }))
+    })));
+
     return result;
   }, [data]);
 
@@ -746,7 +812,7 @@ export default function PlateDbTable({
                   onClick={(e) => plate.misreads?.length > 0 && toggleExpand(plate.plate_number, e)}
                 >
                   <TableCell className="w-[30px]">
-                    {plate.misreads?.length > 0 && (
+                    {plate.misreads?.some(misread => parseInt(misread.occurrence_count || '0') > 0) && (
                       expandedPlates.has(plate.plate_number) ? 
                         <ChevronDownIcon className="h-4 w-4" /> : 
                         <ChevronRightIcon className="h-4 w-4" />
@@ -877,47 +943,49 @@ export default function PlateDbTable({
                 </TableRow>
 
                 {/* Misread Rows - simplified with only delete button */}
-                {expandedPlates.has(plate.plate_number) && plate.misreads?.map(misread => (
-                  <TableRow 
-                    key={misread.plate_number}
-                    className="bg-zinc-100 dark:bg-zinc-800"
-                  >
-                    <TableCell></TableCell>
-                    <TableCell className="font-mono">
-                      <div className="flex items-center gap-2 pl-6">
-                        <ArrowRightIcon className="h-4 w-4 text-muted-foreground" />
-                        {misread.plate_number}
-                      </div>
-                    </TableCell>
-                    <TableCell>{misread.occurrence_count || 0}</TableCell>
-                    <TableCell>{misread.parent_name || misread.name}</TableCell>
-                    <TableCell>{misread.parent_notes || misread.notes}</TableCell>
-                    <TableCell>
-                      {typeof misread.first_seen_at === 'string' ? misread.first_seen_at : format(new Date(misread.first_seen_at), 'dd/MM/yyyy')}
-                    </TableCell>
-                    <TableCell>
-                      {(() => {
-                        console.log('Misread last_seen_at:', {
-                          value: misread.last_seen_at,
-                          count: misread.occurrence_count
-                        });
-                        return misread.last_seen_at || '';
-                      })()}
-                    </TableCell>
-                    <TableCell></TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-red-500 hover:text-red-700"
-                        onClick={() => handleDeleteMisread(misread.plate_number)}
-                      >
-                        <X className="h-4 w-4" />
-                        <span className="sr-only">Delete misread</span>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {expandedPlates.has(plate.plate_number) && plate.misreads
+                  ?.filter(misread => parseInt(misread.occurrence_count || '0') > 0)
+                  .map(misread => (
+                    <TableRow 
+                      key={misread.plate_number}
+                      className="bg-zinc-100 dark:bg-zinc-800"
+                    >
+                      <TableCell></TableCell>
+                      <TableCell className="font-mono">
+                        <div className="flex items-center gap-2 pl-6">
+                          <ArrowRightIcon className="h-4 w-4 text-muted-foreground" />
+                          {misread.plate_number}
+                        </div>
+                      </TableCell>
+                      <TableCell>{misread.occurrence_count || 0}</TableCell>
+                      <TableCell>{misread.parent_name || misread.name}</TableCell>
+                      <TableCell>{misread.parent_notes || misread.notes}</TableCell>
+                      <TableCell>
+                        {typeof misread.first_seen_at === 'string' 
+                          ? misread.first_seen_at 
+                          : format(new Date(misread.first_seen_at), 'dd/MM/yyyy')}
+                      </TableCell>
+                      <TableCell>
+                        {misread.last_seen_at || ''}
+                      </TableCell>
+                      <TableCell></TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:text-red-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveMisread(misread);
+                            setIsDeleteMisreadConfirmOpen(true);
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">Delete misread</span>
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
               </Fragment>
             ))}
           </TableBody>
@@ -973,7 +1041,8 @@ export default function PlateDbTable({
           <DialogHeader>
             <DialogTitle>Confirm Deletion</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete this record? This action cannot be
+              Are you sure you want to delete all records for {activePlate?.plate_number}
+              {activePlate?.misreads?.length > 0 ? ` and its misreads` : ''}? This action cannot be
               undone.
             </DialogDescription>
           </DialogHeader>
@@ -985,6 +1054,29 @@ export default function PlateDbTable({
               Cancel
             </Button>
             <Button variant="destructive" onClick={handleDeleteRecord}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteMisreadConfirmOpen} onOpenChange={setIsDeleteMisreadConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Deletion</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete all records for misread {activeMisread?.plate_number}? 
+              This will remove all occurrences of this misread from the database but keep it in your known plates.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteMisreadConfirmOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteMisread}>
               Delete
             </Button>
           </DialogFooter>

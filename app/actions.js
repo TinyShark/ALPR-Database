@@ -162,12 +162,21 @@ export async function deletePlateFromDB(formData) {
 
 export async function deletePlateRead(formData) {
   try {
-    const plateNumber = formData.get("plateNumber");
-    await removePlateRead(plateNumber);
+    const readId = formData.get("readId");
+    if (!readId) {
+      return { success: false, error: "No read ID provided" };
+    }
+
+    const pool = await getPool();
+    const result = await pool.query(
+      "DELETE FROM plate_reads WHERE id = $1",
+      [readId]
+    );
+
     return { success: true };
   } catch (error) {
-    console.error("Error removing known plate:", error);
-    return { success: false, error: "Failed to remove plate" };
+    console.error("Failed to delete plate read:", error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -753,5 +762,16 @@ export async function getAllPlatesWithKnownInfo({
   } catch (error) {
     console.error('Error in getAllPlatesWithKnownInfo action:', error);
     return { success: false, error: error.message };
+  }
+}
+
+export async function deleteMisreadFromDB(formData) {
+  try {
+    const plateNumber = formData.get("plateNumber");
+    await db.deleteMisreadFromDB(plateNumber);
+    return { success: true, message: "Misread deleted successfully" };
+  } catch (error) {
+    console.error("Failed to delete misread:", error);
+    return { success: false, message: "Failed to delete misread" };
   }
 }
