@@ -116,23 +116,68 @@ export function PlateTableWrapper() {
   };
 
   const handleRemoveTag = async (plateNumber, tagName) => {
-    const formData = new FormData();
-    formData.append("plateNumber", plateNumber);
-    formData.append("tagName", tagName);
+    try {
+      // Find the plate to determine if it's a misread
+      const plate = data.find(p => p.plate_number === plateNumber);
+      if (!plate) {
+        console.log('Plate not found:', plateNumber);
+        return;
+      }
 
-    const result = await untagPlate(formData);
-    if (result.success) {
-      setData((prevData) =>
-        prevData.map((plate) => {
-          if (plate.plate_number === plateNumber) {
-            return {
-              ...plate,
-              tags: (plate.tags || []).filter((tag) => tag.name !== tagName),
-            };
-          }
-          return plate;
-        })
-      );
+      // Debug logging
+      console.log('Removing tag from plate:', {
+        plate_number: plateNumber,
+        parent_plate_number: plate.parent_plate_number,
+        tagName,
+        plate_data: plate
+      });
+
+      const formData = new FormData();
+      
+      // If this is a misread, use its parent's plate number
+      if (plate.parent_plate_number) {
+        formData.append("plateNumber", plate.parent_plate_number);
+        console.log('Removing tag from parent plate:', plate.parent_plate_number);
+      } else {
+        formData.append("plateNumber", plateNumber);
+      }
+      formData.append("tagName", tagName);
+
+      const result = await untagPlate(formData);
+      console.log('Untag result:', result);
+
+      if (result.success) {
+        // Update local state
+        setData((prevData) =>
+          prevData.map((p) => {
+            if (plate.parent_plate_number) {
+              // If this was a misread, update the parent and all its misreads
+              if (p.plate_number === plate.parent_plate_number) {
+                // Update parent's tags
+                return {
+                  ...p,
+                  tags: (p.tags || []).filter(t => t.name !== tagName)
+                };
+              } else if (p.parent_plate_number === plate.parent_plate_number) {
+                // Update all misreads of the same parent
+                return {
+                  ...p,
+                  parent_tags: (p.parent_tags || []).filter(t => t.name !== tagName)
+                };
+              }
+            } else if (p.plate_number === plateNumber) {
+              // Regular plate, just update its tags
+              return {
+                ...p,
+                tags: (p.tags || []).filter(t => t.name !== tagName)
+              };
+            }
+            return p;
+          })
+        );
+      }
+    } catch (error) {
+      console.error("Failed to remove tag:", error);
     }
   };
 

@@ -310,8 +310,21 @@ export async function getLatestPlateReads({
       },
     });
 
+    // Log the data to see what we're getting from the database
+    console.log('Plate reads data:', result.data.map(plate => ({
+      plate_number: plate.plate_number,
+      known_plate: plate.known_plate,
+      tags: plate.tags,
+      parent_tags: plate.parent_tags
+    })));
+
+    // Make sure we're returning the complete data
     return {
-      data: result.data,
+      data: result.data.map(plate => ({
+        ...plate,
+        tags: plate.tags || [],
+        parent_tags: plate.parent_tags || []
+      })),
       pagination: {
         page,
         pageSize,

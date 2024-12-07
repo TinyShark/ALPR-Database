@@ -419,35 +419,48 @@ export default function PlateTable({
                     <TableCell>{plate.occurrence_count}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {(plate.parent_tags?.length > 0 || plate.tags?.length > 0) ? (
-                          (plate.parent_tags || plate.tags).map((tag) => (
-                            <Badge
-                              key={tag.name}
-                              variant="secondary"
-                              className="text-xs py-0.5 pl-2 pr-1 flex items-center space-x-1"
-                              style={{
-                                backgroundColor: tag.color,
-                                color: "#fff",
-                              }}
-                            >
-                              <span>{tag.name}</span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-4 w-4 p-0 hover:bg-red-500 hover:text-white rounded-full"
-                                onClick={() =>
-                                  onRemoveTag(plate.plate_number, tag.name)
-                                }
+                        {(() => {
+                          // Use parent_tags if they exist, otherwise use plate's own tags
+                          const tagsToShow = plate.parent_tags?.length > 0 ? plate.parent_tags : plate.tags;
+
+                          // Log for debugging
+                          console.log('Tags for plate:', {
+                            plate_number: plate.plate_number,
+                            tags: plate.tags,
+                            parent_tags: plate.parent_tags,
+                            tagsToShow
+                          });
+
+                          return tagsToShow?.length > 0 ? (
+                            tagsToShow.map((tag) => (
+                              <Badge
+                                key={tag.name}
+                                variant="secondary"
+                                className="text-xs py-0.5 pl-2 pr-1 flex items-center space-x-1"
+                                style={{
+                                  backgroundColor: tag.color,
+                                  color: "#fff",
+                                }}
                               >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </Badge>
-                          ))
-                        ) : (
-                          <div className="text-sm text-gray-500 dark:text-gray-400 italic">
-                            No tags
-                          </div>
-                        )}
+                                <span>{tag.name}</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-4 w-4 p-0 hover:bg-red-500 hover:text-white rounded-full"
+                                  onClick={() =>
+                                    onRemoveTag(plate.plate_number, tag.name)
+                                  }
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </Badge>
+                            ))
+                          ) : (
+                            <div className="text-sm text-gray-500 dark:text-gray-400 italic">
+                              No tags
+                            </div>
+                          );
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell>
