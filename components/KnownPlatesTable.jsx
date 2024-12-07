@@ -44,6 +44,7 @@ import {
   addKnownPlateWithMisreads,
   deleteMisread,
 } from "@/app/actions";
+import { toast } from "sonner"
 
 export function KnownPlatesTable({ initialData = [] }) {
   const initialDataArray = Array.isArray(initialData) ? initialData : 
@@ -188,16 +189,166 @@ export function KnownPlatesTable({ initialData = [] }) {
     }
   };
 
+  const checkForDuplicatePlate = (plateNumber, data) => {
+    // Check if plate exists as a parent plate or misread
+    const exists = data.some(plate => {
+      if (plate.plate_number === plateNumber) return true;
+      return plate.misreads?.some(misread => misread.plate_number === plateNumber);
+    });
+    return exists;
+  };
+
+  const handleAddNewPlate = async () => {
+    try {
+      // Validate plate number
+      if (!newPlateData.plateNumber) {
+        toast.error("Please enter a plate number");
+        return;
+      }
+
+      // Check for duplicates
+      if (checkForDuplicatePlate(newPlateData.plateNumber, data)) {
+        toast.error(`Plate ${newPlateData.plateNumber} already exists as a known plate or misread`);
+        return;
+      }
+
+      // Validate misreads
+      const validMisreads = newPlateData.misreads.filter(misread => misread.trim() !== '');
+      
+      // Check for duplicate misreads
+      const uniqueMisreads = new Set(validMisreads);
+      if (uniqueMisreads.size !== validMisreads.length) {
+        toast.error("Duplicate misreads are not allowed");
+        return;
+      }
+
+      // Check if any misread matches existing plates
+      for (const misread of validMisreads) {
+        if (checkForDuplicatePlate(misread, data)) {
+          toast.error(`Misread ${misread} already exists as a known plate or misread`);
+          return;
+        }
+      }
+
+      const formData = new FormData();
+      formData.append('plateNumber', newPlateData.plateNumber);
+      formData.append('name', newPlateData.name || '');
+      formData.append('notes', newPlateData.notes || '');
+      formData.append('misreads', JSON.stringify(validMisreads));
+
+      // First create the plate
+      const result = await addKnownPlateWithMisreads(formData);
+
+      if (result.success) {
+        // Then add each tag
+        for (const tagName of newPlateData.tags) {
+          const tagFormData = new FormData();
+          tagFormData.append("plateNumber", newPlateData.plateNumber);
+          tagFormData.append("tagName", tagName);
+          await tagPlate(tagFormData);
+        }
+
+        // Fetch fresh data
+        const response = await getKnownPlatesList();
+        
+        if (response.success) {
+          const newData = Array.isArray(response.data) ? response.data : 
+                         response?.data?.data ? response.data.data : [];
+          setData(newData);
+        }
+        
+        setIsAddPlateOpen(false);
+        setNewPlateData({ plateNumber: '', name: '', notes: '', misreads: [], tags: [] });
+        toast.success("Known Plate added successfully");
+      } else {
+        toast.error(result.error || "Failed to add plate");
+      }
+    } catch (error) {
+      console.error('Failed to add known plate:', error);
+      toast.error("Failed to add plate");
+    }
+  };
+
+  const handleAddMisread = () => {
+    setNewPlateData(prev => ({
+      ...prev,
+      misreads: [...prev.misreads, '']
+    }));
+  };
+
+  const toggleExpand = (plateNumber, e) => {
+    // Prevent event bubbling
+    e.stopPropagation();
+    setExpandedPlates(prev => {
+      const next = new Set(prev);
+      if (next.has(plateNumber)) {
+        next.delete(plateNumber);
+      } else {
+        next.add(plateNumber);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteMisread = async (misreadPlateNumber) => {
+    try {
+      const formData = new FormData();
+      formData.append("plateNumber", misreadPlateNumber);
+
+      const result = await deleteMisread(formData);
+      if (result.success) {
+        // Update the data state to remove the misread
+        setData((prevData) =>
+          prevData.filter((plate) => plate.plate_number !== misreadPlateNumber)
+        );
+        toast.success(`Known Misread ${misreadPlateNumber} removed successfully`);
+      } else {
+        toast.error(result.error || "Failed to remove misread");
+      }
+    } catch (error) {
+      console.error("Failed to delete misread:", error);
+      toast.error("Failed to delete misread");
+    }
+  };
+
+  useEffect(() => {
+  }, [expandedPlates]);
+
   const handleEditPlate = async () => {
     if (!activePlate) return;
     try {
+      // Validate misreads
+      const validMisreads = editPlateData.misreads.filter(misread => misread.trim() !== '');
+      
+      // Check for duplicate misreads
+      const uniqueMisreads = new Set(validMisreads);
+      if (uniqueMisreads.size !== validMisreads.length) {
+        toast.error("Duplicate misreads are not allowed");
+        return;
+      }
+
+      // Check if any misread matches existing plates
+      for (const misread of validMisreads) {
+        if (misread === activePlate.plate_number) {
+          toast.error("A misread cannot be the same as the plate number");
+          return;
+        }
+
+        const isExistingPlate = checkForDuplicatePlate(misread, data.filter(p => 
+          p.plate_number !== activePlate.plate_number && 
+          !activePlate.misreads.some(m => m.plate_number === p.plate_number)
+        ));
+
+        if (isExistingPlate) {
+          toast.error(`Misread ${misread} already exists as a known plate or misread`);
+          return;
+        }
+      }
+
       const formData = new FormData();
       formData.append("plateNumber", activePlate.plate_number);
       formData.append("name", editPlateData.name || '');
       formData.append("notes", editPlateData.notes || '');
-      
-      // Filter out empty misreads
-      const validMisreads = editPlateData.misreads.filter(misread => misread.trim() !== '');
       formData.append('misreads', JSON.stringify(validMisreads));
 
       // First update the plate details
@@ -240,9 +391,13 @@ export function KnownPlatesTable({ initialData = [] }) {
 
         setIsEditPlateOpen(false);
         setEditPlateData({ name: "", notes: "", tags: [], misreads: [] });
+        toast.success("Known Plate updated successfully");
+      } else {
+        toast.error(result.error || "Failed to update plate");
       }
     } catch (error) {
       console.error("Failed to update known plate:", error);
+      toast.error("Failed to update plate");
     }
   };
 
@@ -260,92 +415,15 @@ export function KnownPlatesTable({ initialData = [] }) {
           )
         );
         setIsRemoveConfirmOpen(false);
+        toast.success(`Known Plate ${activePlate.plate_number} removed successfully`);
+      } else {
+        toast.error(result.error || "Failed to remove plate");
       }
     } catch (error) {
       console.error("Failed to remove from known plates:", error);
+      toast.error("Failed to remove plate");
     }
   };
-
-  const handleAddNewPlate = async () => {
-    try {
-      const formData = new FormData();
-      formData.append('plateNumber', newPlateData.plateNumber);
-      formData.append('name', newPlateData.name || '');
-      formData.append('notes', newPlateData.notes || '');
-      
-      // Filter out empty misreads before saving
-      const validMisreads = newPlateData.misreads.filter(misread => misread.trim() !== '');
-      formData.append('misreads', JSON.stringify(validMisreads));
-
-      // First create the plate
-      const result = await addKnownPlateWithMisreads(formData);
-
-      if (result.success) {
-        // Then add each tag
-        for (const tagName of newPlateData.tags) {
-          const tagFormData = new FormData();
-          tagFormData.append("plateNumber", newPlateData.plateNumber);
-          tagFormData.append("tagName", tagName);
-          await tagPlate(tagFormData);
-        }
-
-        // Fetch fresh data
-        const response = await getKnownPlatesList();
-        
-        if (response.success) {
-          const newData = Array.isArray(response.data) ? response.data : 
-                         response?.data?.data ? response.data.data : [];
-          setData(newData);
-        }
-        
-        setIsAddPlateOpen(false);
-        setNewPlateData({ plateNumber: '', name: '', notes: '', misreads: [], tags: [] });
-      }
-    } catch (error) {
-      console.error('Failed to add known plate:', error);
-    }
-  };
-
-  const handleAddMisread = () => {
-    setNewPlateData(prev => ({
-      ...prev,
-      misreads: [...prev.misreads, '']
-    }));
-  };
-
-  const toggleExpand = (plateNumber, e) => {
-    // Prevent event bubbling
-    e.stopPropagation();
-    setExpandedPlates(prev => {
-      const next = new Set(prev);
-      if (next.has(plateNumber)) {
-        next.delete(plateNumber);
-      } else {
-        next.add(plateNumber);
-      }
-      return next;
-    });
-  };
-
-  const handleDeleteMisread = async (misreadPlateNumber) => {
-    try {
-      const formData = new FormData();
-      formData.append("plateNumber", misreadPlateNumber);
-
-      const result = await deleteMisread(formData);
-      if (result.success) {
-        // Update the data state to remove the misread
-        setData((prevData) =>
-          prevData.filter((plate) => plate.plate_number !== misreadPlateNumber)
-        );
-      }
-    } catch (error) {
-      console.error("Failed to delete misread:", error);
-    }
-  };
-
-  useEffect(() => {
-  }, [expandedPlates]);
 
   return (
     <Card>

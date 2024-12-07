@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { initializeAuth } from "@/lib/auth";
 import { Suspense } from "react";
 import VersionAlert from "@/components/UpdateAlert";
+import { Toaster } from 'sonner'
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -35,6 +36,7 @@ export default function RootLayout({ children }) {
             {children}
           </ThemeProvider>
         </Suspense>
+        <Toaster />
       </body>
     </html>
   );

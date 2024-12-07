@@ -745,7 +745,7 @@ export default function PlateDbTable({
                   <TableCell>{plate.parent_name || plate.name}</TableCell>
                   <TableCell>{plate.parent_notes || plate.notes}</TableCell>
                   <TableCell>
-                    {plate.first_seen_at ? format(new Date(plate.first_seen_at), 'dd/MM/yyyy') : ''}
+                    {typeof plate.first_seen_at === 'string' ? plate.first_seen_at : format(new Date(plate.first_seen_at), 'dd/MM/yyyy')}
                   </TableCell>
                   <TableCell>
                     {plate.last_seen_at === '0 minutes ago' ? 'Just now' : plate.last_seen_at || ''}
@@ -867,9 +867,7 @@ export default function PlateDbTable({
                     <TableCell>{misread.parent_name || misread.name}</TableCell>
                     <TableCell>{misread.parent_notes || misread.notes}</TableCell>
                     <TableCell>
-                      {misread.first_seen_at && misread.occurrence_count > 0 && isValid(new Date(misread.first_seen_at)) ? 
-                        format(new Date(misread.first_seen_at), 'dd/MM/yyyy') : 
-                        ''}
+                      {typeof misread.first_seen_at === 'string' ? misread.first_seen_at : format(new Date(misread.first_seen_at), 'dd/MM/yyyy')}
                     </TableCell>
                     <TableCell>
                       {(() => {
