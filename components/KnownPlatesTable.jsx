@@ -429,12 +429,15 @@ export function KnownPlatesTable({ initialData = [] }) {
     <Card>
       <CardContent className="py-4">
         <div className="flex justify-between items-center mb-4">
-          <Input
-            placeholder="Search plates..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm"
-          />
+          <div className="flex items-center">
+            <Search className="text-gray-400 dark:text-gray-500" />
+            <Input
+              placeholder="Search known plates..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value.toUpperCase())}
+              className="w-64 ml-2"
+            />
+          </div>
           <Button
             onClick={() => setIsAddPlateOpen(true)}
             className="flex items-center gap-2"

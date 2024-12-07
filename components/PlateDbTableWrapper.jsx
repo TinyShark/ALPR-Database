@@ -19,7 +19,7 @@ export function PlateDbTableWrapper() {
   const urlParams = useMemo(() => ({
     page: searchParams.get('page') || '1',
     pageSize: searchParams.get('pageSize') || '10',
-    sortField: searchParams.get('sortField') || 'first_seen_at',
+    sortField: searchParams.get('sortField') || 'last_seen_at',
     sortOrder: searchParams.get('sortOrder') || 'DESC',
     tag: searchParams.get('tag') || 'all',
     search: searchParams.get('search') || '',
@@ -92,12 +92,15 @@ export function PlateDbTableWrapper() {
 
     handleDateRangeChange: (range) => {
       if (!range) {
-        const queryString = createQueryString({ 
-          dateFrom: null,
-          dateTo: null,
-          page: '1'
-        });
-        router.push(`${pathname}?${queryString}`);
+        // Create a new URLSearchParams with only sort parameters
+        const newParams = new URLSearchParams();
+        // Preserve sort settings
+        if (urlParams.sortField) newParams.set('sortField', urlParams.sortField);
+        if (urlParams.sortOrder) newParams.set('sortOrder', urlParams.sortOrder);
+        // Reset to page 1
+        newParams.set('page', '1');
+        // Use the new params string directly
+        router.push(`${pathname}?${newParams.toString()}`);
         return;
       }
 
@@ -146,6 +149,19 @@ export function PlateDbTableWrapper() {
       });
       router.push(`${pathname}?${queryString}`);
     },
+
+    handleClearFilters: () => {
+      // Create a new URLSearchParams with only sort parameters
+      const newParams = new URLSearchParams();
+      // Preserve sort settings
+      if (urlParams.sortField) newParams.set('sortField', urlParams.sortField);
+      if (urlParams.sortOrder) newParams.set('sortOrder', urlParams.sortOrder);
+      if (urlParams.pageSize) newParams.set('pageSize', urlParams.pageSize);
+      // Reset to page 1
+      newParams.set('page', '1');
+      // Use the new params string directly
+      router.push(`${pathname}?${newParams.toString()}`);
+    },
   }), [urlParams, total, router, pathname, createQueryString]);
 
   const paginationProps = useMemo(() => ({
@@ -175,7 +191,8 @@ export function PlateDbTableWrapper() {
         onTagClick: handlers.handleTagClick,
         onSearch: handlers.handleSearch,
         onDateRangeChange: handlers.handleDateRangeChange,
-        onSort: handlers.handleSort
+        onSort: handlers.handleSort,
+        onClearFilters: handlers.handleClearFilters
       }}
       pagination={paginationProps}
     />

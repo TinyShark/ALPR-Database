@@ -96,6 +96,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { format, parseISO, isValid } from "date-fns";
+import { toast } from "sonner";
 
 const formatDaysAgo = (timestamp) => {
   if (!timestamp) return '';
@@ -177,11 +178,24 @@ const PAGE_SIZE_OPTIONS = [
   { value: "100", label: "100 per page" },
 ];
 
+// Add a helper function to check if any filters are active
+const hasActiveFilters = (filters) => {
+  return Boolean(
+    filters.search || 
+    filters.tag !== 'all' || 
+    filters.dateFrom || 
+    filters.dateTo
+  );
+};
+
 export default function PlateDbTable({ 
   initialData = [], 
   loading = false,
   filters,
-  sort,
+  sort = {
+    field: 'last_seen_at',
+    order: 'DESC'
+  },
   onUpdateFilters,
   pagination = {
     page: 1,
@@ -194,7 +208,6 @@ export default function PlateDbTable({
 }) {
   const [data, setData] = useState(initialData);
   const [filteredData, setFilteredData] = useState(initialData);
-  const [searchTerm, setSearchTerm] = useState("");
   const [isAddKnownPlateOpen, setIsAddKnownPlateOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [activePlate, setActivePlate] = useState(null);
@@ -202,10 +215,6 @@ export default function PlateDbTable({
   const [availableTags, setAvailableTags] = useState([]);
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
   const [plateInsights, setPlateInsights] = useState(null);
-  const [sortConfig, setSortConfig] = useState({
-    key: "last_seen_at", // default sort by last seen
-    direction: "desc", // default newest first
-  });
   const [expandedPlates, setExpandedPlates] = useState(new Set());
 
   useEffect(() => {
@@ -216,10 +225,10 @@ export default function PlateDbTable({
   useEffect(() => {
     const filtered = data.filter((plate) => {
       // Search filter
-      const matchesSearch = searchTerm === "" || Boolean(
-        plate.plate_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        plate.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        plate.notes?.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesSearch = filters.search === "" || Boolean(
+        plate.plate_number?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        plate.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        plate.notes?.toLowerCase().includes(filters.search.toLowerCase())
       );
 
       // Tag filter
@@ -239,26 +248,16 @@ export default function PlateDbTable({
     });
 
     setFilteredData(filtered);
-  }, [data, searchTerm, filters.tag, filters.dateRange]);
-
-  const requestSort = (key) => {
-    setSortConfig((prevConfig) => ({
-      key,
-      direction:
-        prevConfig.key === key && prevConfig.direction === "asc"
-          ? "desc"
-          : "asc",
-    }));
-  };
+  }, [data, filters.search, filters.tag, filters.dateRange]);
 
   const getSortIcon = (columnKey) => {
-    if (sortConfig.key !== columnKey) {
-      return <ChevronsUpDown className="ml-2 h-2 w-2" />;
+    if (sort.field !== columnKey) {
+      return <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />;
     }
-    return sortConfig.direction === "asc" ? (
-      <ChevronUp className="ml-2 h-2 w-2" />
+    return sort.order === "ASC" ? (
+      <ChevronUp className="ml-2 h-4 w-4 shrink-0" />
     ) : (
-      <ChevronDown className="ml-2 h-2 w-2" />
+      <ChevronDown className="ml-2 h-4 w-4 shrink-0" />
     );
   };
 
@@ -336,9 +335,11 @@ export default function PlateDbTable({
         );
         setIsAddKnownPlateOpen(false);
         setNewKnownPlate({ name: "", notes: "" });
+        toast.success(`Added ${activePlate.plate_number} to known plates`);
       }
     } catch (error) {
       console.error("Failed to add known plate:", error);
+      toast.error("Failed to add to known plates");
     }
   };
 
@@ -356,9 +357,11 @@ export default function PlateDbTable({
           )
         );
         setIsDeleteConfirmOpen(false);
+        toast.success(`Deleted plate ${activePlate.plate_number}`);
       }
     } catch (error) {
       console.error("Failed to delete record:", error);
+      toast.error("Failed to delete plate");
     }
   };
 
@@ -389,9 +392,11 @@ export default function PlateDbTable({
             plate.plate_number === plateNumber ? { ...plate, flagged } : plate
           )
         );
+        toast.success(`${flagged ? 'Flagged' : 'Unflagged'} plate ${plateNumber}`);
       }
     } catch (error) {
       console.error("Failed to toggle plate flag:", error);
+      toast.error("Failed to update flag");
     }
   };
 
@@ -467,7 +472,7 @@ export default function PlateDbTable({
   };
 
   const handleSearch = (e) => {
-    setSearchTerm(e.target.value);
+    onUpdateFilters.onSearch(e.target.value);
   };
 
   const handleTagFilter = (value) => {
@@ -501,13 +506,13 @@ export default function PlateDbTable({
       }
 
       // Search filter - check plate and its misreads
-      const matchesSearch = searchTerm === "" || Boolean(
-        plate.plate_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        plate.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        plate.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const matchesSearch = filters.search === "" || Boolean(
+        plate.plate_number?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        plate.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        plate.notes?.toLowerCase().includes(filters.search.toLowerCase()) ||
         data.some(misread => 
           misread.parent_plate_number === plate.plate_number &&
-          misread.plate_number.toLowerCase().includes(searchTerm.toLowerCase())
+          misread.plate_number.toLowerCase().includes(filters.search.toLowerCase())
         )
       );
 
@@ -566,94 +571,103 @@ export default function PlateDbTable({
     const groupedData = Array.from(groups.values());
     console.log("Final grouped data:", groupedData);
     setFilteredData(groupedData);
-  }, [data, searchTerm, filters.tag, filters.dateRange]);
+  }, [data, filters.search, filters.tag, filters.dateRange]);
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
+        {/* Left side controls */}
         <div className="flex items-center space-x-2">
-          <Search className="text-gray-400 dark:text-gray-500" />
-          <Input
-            placeholder="Search plates, names, or notes..."
-            value={searchTerm}
-            onChange={handleSearch}
-            className="w-64"
-          />
-        </div>
-        <div className="flex items-center space-x-2">
-          <Filter className="text-gray-400 dark:text-gray-500" />
-          <Select value={filters.tag} onValueChange={onUpdateFilters.onTagClick}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by tag" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Tags</SelectItem>
-              {availableTags.map((tag) => (
-                <SelectItem key={tag.name} value={tag.name}>
-                  <div className="flex items-center">
-                    <div
-                      className="w-3 h-3 rounded-full mr-2"
-                      style={{ backgroundColor: tag.color }}
-                    />
-                    {tag.name}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="justify-start text-left font-normal">
-                <Calendar className="mr-2 h-4 w-4" />
-                {filters.dateFrom && filters.dateTo ? (
-                  <>
-                    {format(parseISO(filters.dateFrom), "LLL dd, y")} -{" "}
-                    {format(parseISO(filters.dateTo), "LLL dd, y")}
-                  </>
-                ) : (
-                  <span>Date Range</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <CalendarComponent
-                initialFocus
-                mode="range"
-                selected={{
-                  from: filters.dateFrom ? parseISO(filters.dateFrom) : undefined,
-                  to: filters.dateTo ? parseISO(filters.dateTo) : undefined
-                }}
-                onSelect={(range) => {
-                  console.log("Date selected:", range);
-                  
-                  // If clearing the date range
-                  if (!range) {
-                    onUpdateFilters.onDateRangeChange(null);
-                    return;
-                  }
+          {/* Search */}
+          <div className="flex items-center">
+            <Search className="text-gray-400 dark:text-gray-500" />
+            <Input
+              placeholder="Search plates, names, or notes..."
+              value={filters.search}
+              onChange={handleSearch}
+              className="w-64 ml-2"
+            />
+          </div>
 
-                  // Update on each click, allowing single date or date range
-                  onUpdateFilters.onDateRangeChange({
-                    from: range.from,
-                    to: range.to || range.from // If no end date, use start date
-                  });
-                }}
-                numberOfMonths={2}
-              />
-            </PopoverContent>
-          </Popover>
-          {(filters.dateFrom || filters.dateTo) && (
-            <Button
-              variant="ghost"
-              onClick={() => onUpdateFilters.onDateRangeChange(null)}
-            >
-              <X className="h-4 w-4" />
-              <span className="sr-only">Clear date range</span>
-            </Button>
-          )}
+          {/* Tag filter */}
+          <div className="flex items-center ml-2">
+            <Select value={filters.tag} onValueChange={onUpdateFilters.onTagClick}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by tag" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tags</SelectItem>
+                {availableTags.map((tag) => (
+                  <SelectItem key={tag.name} value={tag.name}>
+                    <div className="flex items-center">
+                      <div
+                        className="w-3 h-3 rounded-full mr-2"
+                        style={{ backgroundColor: tag.color }}
+                      />
+                      {tag.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Date picker */}
+          <div className="flex items-center space-x-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="justify-start text-left font-normal">
+                  <Calendar className="mr-2 h-4 w-4" />
+                  {filters.dateFrom && filters.dateTo ? (
+                    filters.dateFrom === filters.dateTo ? (
+                      format(parseISO(filters.dateFrom), "LLL dd, y")
+                    ) : (
+                      <>
+                        {format(parseISO(filters.dateFrom), "LLL dd, y")} -{" "}
+                        {format(parseISO(filters.dateTo), "LLL dd, y")}
+                      </>
+                    )
+                  ) : (
+                    <span>Date Range</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  initialFocus
+                  mode="range"
+                  selected={{
+                    from: filters.dateFrom ? parseISO(filters.dateFrom) : undefined,
+                    to: filters.dateTo ? parseISO(filters.dateTo) : undefined
+                  }}
+                  onSelect={(range) => {
+                    if (!range) {
+                      onUpdateFilters.onDateRangeChange(null);
+                      return;
+                    }
+                    onUpdateFilters.onDateRangeChange({
+                      from: range.from,
+                      to: range.to || range.from
+                    });
+                  }}
+                  numberOfMonths={2}
+                />
+              </PopoverContent>
+            </Popover>
+            {hasActiveFilters(filters) && (
+              <Button
+                variant="ghost"
+                onClick={onUpdateFilters.onClearFilters}
+                className="flex items-center gap-2"
+              >
+                <X className="h-4 w-4" />
+                <span>Clear all</span>
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="flex items-center justify-between">
+
+        {/* Right side - Page size selector */}
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Show</span>
           <Select
@@ -679,30 +693,42 @@ export default function PlateDbTable({
             <TableRow>
               <TableHead className="w-[30px]"></TableHead>
               <TableHead 
-                className="cursor-pointer"
+                className="cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => onUpdateFilters.onSort('plate_number')}
               >
-                Plate Number {getSortIcon('plate_number')}
+                <div className="flex items-center">
+                  Plate Number
+                  {getSortIcon('plate_number')}
+                </div>
               </TableHead>
               <TableHead 
-                className="cursor-pointer"
+                className="cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => onUpdateFilters.onSort('occurrence_count')}
               >
-                Seen {getSortIcon('occurrence_count')}
+                <div className="flex items-center">
+                  Seen
+                  {getSortIcon('occurrence_count')}
+                </div>
               </TableHead>
               <TableHead className="w-56 2xl:w-96">Name</TableHead>
               <TableHead>Notes</TableHead>
               <TableHead 
-                className="cursor-pointer"
+                className="cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => onUpdateFilters.onSort('first_seen_at')}
               >
-                First Seen {getSortIcon('first_seen_at')}
+                <div className="flex items-center">
+                  First Seen
+                  {getSortIcon('first_seen_at')}
+                </div>
               </TableHead>
               <TableHead 
-                className="cursor-pointer"
+                className="cursor-pointer hover:bg-muted/50 transition-colors"
                 onClick={() => onUpdateFilters.onSort('last_seen_at')}
               >
-                Last Seen {getSortIcon('last_seen_at')}
+                <div className="flex items-center">
+                  Last Seen
+                  {getSortIcon('last_seen_at')}
+                </div>
               </TableHead>
               <TableHead className="w-[150px]">Tags</TableHead>
               <TableHead className="w-[120px] text-left">Actions</TableHead>
