@@ -440,14 +440,6 @@ export default function PlateDbTable({
       return [];
     }
 
-    // Log initial data to see what we're working with
-    console.log('Initial data structure:', data.map(plate => ({
-      plate_number: plate.plate_number,
-      parent_plate_number: plate.parent_plate_number,
-      occurrence_count: plate.occurrence_count,
-      is_misread: Boolean(plate.parent_plate_number)
-    })));
-
     const groups = new Map();
     
     // First pass: Collect all plates and their misreads
@@ -456,11 +448,6 @@ export default function PlateDbTable({
 
       // If this is a misread (has parent_plate_number), store it for later processing
       if (plate.parent_plate_number) {
-        console.log('Found misread:', {
-          misread: plate.plate_number,
-          parent: plate.parent_plate_number,
-          count: plate.occurrence_count
-        });
         return;
       }
 
@@ -483,22 +470,12 @@ export default function PlateDbTable({
       
       // Skip if occurrence count is 0 or invalid
       if (!occurrenceCount || occurrenceCount <= 0) {
-        console.log('Skipping zero-count misread:', {
-          plate: plate.plate_number,
-          parent: plate.parent_plate_number,
-          count: occurrenceCount
-        });
         return;
       }
 
       // Add valid misread to parent
       if (groups.has(plate.parent_plate_number)) {
         const parentPlate = groups.get(plate.parent_plate_number);
-        console.log('Adding valid misread to parent:', {
-          misread: plate.plate_number,
-          parent: plate.parent_plate_number,
-          count: occurrenceCount
-        });
         
         parentPlate.misreads.push({
           ...plate,
@@ -509,17 +486,6 @@ export default function PlateDbTable({
     });
 
     const result = Array.from(groups.values());
-    
-    // Log final structure before returning
-    console.log('Final structure:', result.map(plate => ({
-      plate_number: plate.plate_number,
-      total_count: plate.total_occurrence_count,
-      misreads_count: plate.misreads.length,
-      misreads: plate.misreads.map(m => ({
-        plate: m.plate_number,
-        count: m.occurrence_count
-      }))
-    })));
 
     return result;
   }, [data]);
@@ -562,12 +528,10 @@ export default function PlateDbTable({
 
   // Filtering logic
   useEffect(() => {
-    console.log("Starting filtering with data:", data);
 
     const filtered = data.filter((plate) => {
       // Skip plates that are misreads in the initial filter
       if (plate.parent_plate_number) {
-        console.log("Skipping misread in initial filter:", plate.plate_number, "parent:", plate.parent_plate_number);
         return false;
       }
 
@@ -592,17 +556,8 @@ export default function PlateDbTable({
         (!filters.dateRange.from || new Date(plate.first_seen_at) >= filters.dateRange.from) &&
         (!filters.dateRange.to || new Date(plate.first_seen_at) <= filters.dateRange.to)
       );
-
-      console.log("Filtering plate:", plate.plate_number, {
-        matchesSearch,
-        matchesTag,
-        matchesDate
-      });
-
       return matchesSearch && matchesTag && matchesDate;
     });
-
-    console.log("After filtering, parent plates:", filtered);
 
     // After filtering, group the data
     const groups = new Map();
@@ -610,22 +565,9 @@ export default function PlateDbTable({
     // First, add all filtered parent plates with their existing misreads
     filtered.forEach(plate => {
       if (!plate) return;
-      
-      console.log("Adding parent plate to groups with data:", {
-        plate_number: plate.plate_number,
-        parent_count: parseInt(plate.occurrence_count || 0),
-        misreads: plate.misreads
-      });
 
       const misreadsTotal = plate.misreads?.reduce((sum, misread) => 
         sum + parseInt(misread.occurrence_count || 0), 0) || 0;
-
-      console.log("Calculated totals:", {
-        plate_number: plate.plate_number,
-        parent_count: parseInt(plate.occurrence_count || 0),
-        misreads_total: misreadsTotal,
-        total: parseInt(plate.occurrence_count || 0)
-      });
 
       groups.set(plate.plate_number, {
         ...plate,
@@ -635,7 +577,6 @@ export default function PlateDbTable({
     });
 
     const groupedData = Array.from(groups.values());
-    console.log("Final grouped data:", groupedData);
     setFilteredData(groupedData);
   }, [data, filters.search, filters.tag, filters.dateRange]);
 

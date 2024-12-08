@@ -722,10 +722,10 @@ export function KnownPlatesTable({ initialData = [] }) {
                             onClick={() => {
                               setActivePlate(plate);
                               setEditPlateData({
-                                name: plate.name,
-                                notes: plate.notes,
+                                name: plate.name || "",
+                                notes: plate.notes || "",
                                 tags: plate.tags || [],
-                                misreads: plate.misreads.map(m => m.plate_number) || []
+                                misreads: plate.misreads?.map(m => m.plate_number) || []
                               });
                               setIsEditPlateOpen(true);
                             }}

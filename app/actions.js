@@ -182,7 +182,6 @@ export async function deletePlateRead(formData) {
 
 export async function getKnownPlatesList() {
   try {
-    console.log("known plates action run");
     return { success: true, data: await getKnownPlates() };
   } catch (error) {
     console.error("Error getting known plates:", error);
@@ -296,9 +295,11 @@ export async function getLatestPlateReads({
   tag = "all",
   dateRange = null,
   cameraName = "",
+  timeFrom = null,
+  timeTo = null
 } = {}) {
   try {
-    const result = await getPlateReads({
+    const result = await db.getPlateReads({
       page,
       pageSize,
       filters: {
@@ -307,30 +308,14 @@ export async function getLatestPlateReads({
         tag: tag !== "all" ? tag : undefined,
         dateRange,
         cameraName: cameraName || undefined,
+        timeFrom,
+        timeTo
       },
     });
 
-    // Log the data to see what we're getting from the database
-    console.log('Plate reads data:', result.data.map(plate => ({
-      plate_number: plate.plate_number,
-      known_plate: plate.known_plate,
-      tags: plate.tags,
-      parent_tags: plate.parent_tags
-    })));
-
-    // Make sure we're returning the complete data
     return {
-      data: result.data.map(plate => ({
-        ...plate,
-        tags: plate.tags || [],
-        parent_tags: plate.parent_tags || []
-      })),
-      pagination: {
-        page,
-        pageSize,
-        total: result.pagination.total,
-        pageCount: result.pagination.pageCount,
-      },
+      data: result.data,
+      pagination: result.pagination,
     };
   } catch (error) {
     console.error("Error fetching plate reads:", error);
@@ -466,7 +451,6 @@ export async function toggleNotification(formData) {
 export async function deleteNotification(formData) {
   try {
     const plateNumber = formData.get("plateNumber");
-    console.log("Server action received plateNumber:", plateNumber);
     await deleteNotificationDB(plateNumber);
     return { success: true };
   } catch (error) {

@@ -9,7 +9,7 @@ import {
   Plus,
   Trash2,
   X,
-  CalendarDays,
+  Calendar,
   HelpCircle,
   Edit,
 } from "lucide-react";
@@ -51,7 +51,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import {
   Tooltip,
   TooltipContent,
@@ -60,9 +60,10 @@ import {
 } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { TimeRangeSelect } from "./TimeRangeSelect";
 
 export default function PlateTable({
   data,
@@ -189,58 +190,61 @@ export default function PlateTable({
   };
 
   const clearFilters = () => {
+    // Create a new URLSearchParams with only pageSize
+    const params = new URLSearchParams();
+    params.set('pageSize', filters.pageSize || '25');
+    
+    // Reset all filters
     onUpdateFilters({
       search: "",
       tag: "all",
       dateFrom: null,
       dateTo: null,
+      timeFrom: null,
+      timeTo: null,
+      camera: "all",
     });
   };
 
   return (
     <Card>
       <CardContent className="py-4">
-        <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
-          <div className="flex items-center justify-start space-x-2">
+        <div className="flex flex-wrap justify-between items-start gap-4 mb-4">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center space-x-2">
               <Search className="text-gray-400 dark:text-gray-500" />
               <Input
                 placeholder="Search plates..."
                 value={filters.search}
                 onChange={handleSearchChange}
-                className="w-64"
+                className="w-[200px] min-w-[120px]"
               />
-              <div className="flex items-center border rounded-md px-3 py-2 bg-background">
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={filters.fuzzySearch}
-                    onCheckedChange={handleFuzzySearchToggle}
-                    id="fuzzy-search"
-                  />
-                  <label
-                    htmlFor="fuzzy-search"
-                    className="text-sm text-muted-foreground cursor-pointer"
-                  >
-                    Fuzzy Search
-                  </label>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p className="max-w-xs">
-                          Fuzzy search helps find plates with potential OCR
-                          misreads. For example, searching for
-                          &ldquo;7MLG803&rdquo; will also find similar plates
-                          like &ldquo;7NLG803&rdquo; or &ldquo;7ML6803&rdquo;.
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </div>
             </div>
+
+            <div className="flex items-center border rounded-md px-3 py-2 bg-background">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={filters.fuzzySearch}
+                        onCheckedChange={handleFuzzySearchToggle}
+                      />
+                      <span className="text-sm text-muted-foreground">Fuzzy Search</span>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="max-w-xs">
+                      Fuzzy search helps find plates with potential OCR misreads. 
+                      For example, searching for "7MLG803" will also find similar 
+                      plates like "7NLG803" or "7ML6803".
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
             <Select value={filters.tag} onValueChange={handleTagChange}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by tag" />
@@ -260,6 +264,7 @@ export default function PlateTable({
                 ))}
               </SelectContent>
             </Select>
+
             <Select
               value={filters.cameraName || "all"}
               onValueChange={handleCameraChange}
@@ -279,31 +284,97 @@ export default function PlateTable({
 
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <CalendarDays className="h-4 w-4" />
-                  {filters.dateRange.from ? (
-                    filters.dateRange.to ? (
-                      <>
-                        {format(filters.dateRange.from, "LLL dd")} -{" "}
-                        {format(filters.dateRange.to, "LLL dd")}
-                      </>
-                    ) : (
-                      format(filters.dateRange.from, "LLL dd")
-                    )
+                <Button variant="outline" className="justify-start text-left font-normal">
+                  <Calendar className="mr-2 h-4 w-4" />
+                  {filters.dateFrom && filters.dateTo ? (
+                    <>
+                      {filters.dateFrom === filters.dateTo ? (
+                        <>
+                          {format(parseISO(filters.dateFrom), "do MMM, yyyy")}
+                          {(filters.timeFrom || filters.timeTo) && " @ "}
+                          {filters.timeFrom && filters.timeTo ? (
+                            `${filters.timeFrom} - ${filters.timeTo}`
+                          ) : filters.timeFrom ? (
+                            `from ${filters.timeFrom}`
+                          ) : filters.timeTo ? (
+                            `until ${filters.timeTo}`
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          {format(parseISO(filters.dateFrom), "do MMM, yyyy")} -{" "}
+                          {format(parseISO(filters.dateTo), "do MMM, yyyy")}
+                          {(filters.timeFrom || filters.timeTo) && " // "}
+                          {filters.timeFrom && filters.timeTo ? (
+                            `${filters.timeFrom} - ${filters.timeTo}`
+                          ) : filters.timeFrom ? (
+                            `from ${filters.timeFrom}`
+                          ) : filters.timeTo ? (
+                            `until ${filters.timeTo}`
+                          ) : null}
+                        </>
+                      )}
+                    </>
+                  ) : (filters.timeFrom || filters.timeTo) ? (
+                    <>
+                      Today // {filters.timeFrom && filters.timeTo ? (
+                        `${filters.timeFrom} - ${filters.timeTo}`
+                      ) : filters.timeFrom ? (
+                        `from ${filters.timeFrom}`
+                      ) : filters.timeTo ? (
+                        `until ${filters.timeTo}`
+                      ) : null}
+                    </>
                   ) : (
-                    "Date Range"
+                    <span>Date / Time</span>
                   )}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
+                <div className="p-4 border-b">
+                  <TimeRangeSelect
+                    value={{
+                      from: filters.timeFrom || null,
+                      to: filters.timeTo || null
+                    }}
+                    onValueChange={(range) => {
+                      onUpdateFilters({
+                        timeFrom: range.from,
+                        timeTo: range.to
+                      });
+                    }}
+                  />
+                </div>
+                <CalendarComponent
                   initialFocus
                   mode="range"
                   selected={{
-                    from: filters.dateRange.from,
-                    to: filters.dateRange.to,
+                    from: filters.dateFrom ? parseISO(filters.dateFrom) : undefined,
+                    to: filters.dateTo ? parseISO(filters.dateTo) : undefined
                   }}
-                  onSelect={handleDateRangeSelect}
+                  onSelect={(range) => {
+                    if (!range) {
+                      onUpdateFilters({ dateFrom: null, dateTo: null });
+                      return;
+                    }
+
+                    // When first selecting a date, set both from and to to that date
+                    if (range.from && !range.to) {
+                      onUpdateFilters({
+                        dateFrom: range.from.toISOString().split('T')[0],
+                        dateTo: range.from.toISOString().split('T')[0]
+                      });
+                      return;
+                    }
+
+                    // When selecting a second date
+                    if (range.from && range.to) {
+                      onUpdateFilters({
+                        dateFrom: range.from.toISOString().split('T')[0],
+                        dateTo: range.to.toISOString().split('T')[0]
+                      });
+                    }
+                  }}
                   numberOfMonths={2}
                 />
               </PopoverContent>
@@ -311,7 +382,10 @@ export default function PlateTable({
 
             {(filters.search ||
               filters.tag !== "all" ||
-              filters.dateRange.from) && (
+              filters.dateFrom ||
+              filters.dateTo ||
+              filters.timeFrom ||
+              filters.timeTo) && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -324,7 +398,7 @@ export default function PlateTable({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <span className="text-sm text-muted-foreground">Show</span>
             <Select
               value={pagination.pageSize.toString()}
@@ -349,14 +423,13 @@ export default function PlateTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Image</TableHead>
-                <TableHead>Plate Number</TableHead>
-                {/* <TableHead>Vehicle Description</TableHead> */}
-                <TableHead>Occurrences</TableHead>
-                <TableHead>Tags</TableHead>
-                <TableHead>Camera</TableHead>
-                <TableHead>Timestamp</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="w-[120px] whitespace-nowrap">Image</TableHead>
+                <TableHead className="min-w-[120px] whitespace-nowrap">Plate Number</TableHead>
+                <TableHead className="min-w-[100px] whitespace-nowrap">Occurrences</TableHead>
+                <TableHead className="min-w-[150px] whitespace-nowrap">Tags</TableHead>
+                <TableHead className="min-w-[100px] whitespace-nowrap">Camera</TableHead>
+                <TableHead className="min-w-[100px] whitespace-nowrap">Timestamp</TableHead>
+                <TableHead className="w-[120px] whitespace-nowrap">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -375,7 +448,7 @@ export default function PlateTable({
               ) : (
                 data.map((plate) => (
                   <TableRow key={plate.id}>
-                    <TableCell>
+                    <TableCell className="pr-6">
                       <a
                         href={getImageUrl(plate.image_data)}
                         target="_blank"
@@ -415,21 +488,12 @@ export default function PlateTable({
                         </div>
                       )}
                     </TableCell>
-                    {/* <TableCell>{plate.vehicle_description}</TableCell> */}
                     <TableCell>{plate.occurrence_count}</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap items-center gap-1.5">
                         {(() => {
                           // Use parent_tags if they exist, otherwise use plate's own tags
                           const tagsToShow = plate.parent_tags?.length > 0 ? plate.parent_tags : plate.tags;
-
-                          // Log for debugging
-                          console.log('Tags for plate:', {
-                            plate_number: plate.plate_number,
-                            tags: plate.tags,
-                            parent_tags: plate.parent_tags,
-                            tagsToShow
-                          });
 
                           return tagsToShow?.length > 0 ? (
                             tagsToShow.map((tag) => (
@@ -471,7 +535,14 @@ export default function PlateTable({
                       )}
                     </TableCell>
                     <TableCell>
-                      {new Date(plate.timestamp).toLocaleString()}
+                      <div className="flex flex-col">
+                        <span className="text-base font-medium">
+                          {new Date(plate.timestamp).toLocaleTimeString()}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(plate.timestamp).toLocaleDateString()}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex space-x-2">
