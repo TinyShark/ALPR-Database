@@ -13,6 +13,7 @@ import {
   ArrowUpRightIcon,
   ArrowUp,
   ArrowDown,
+  Check,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
@@ -93,11 +94,23 @@ import {
   alterPlateFlag,
   deletePlateFromDB,
   deleteMisreadFromDB,
+  getKnownPlatesList,
+  addKnownPlateWithMisreads,
 } from "@/app/actions";
 import Image from "next/image";
 import Link from "next/link";
 import { format, parseISO, isValid } from "date-fns";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 const formatDaysAgo = (timestamp) => {
   if (!timestamp) return '';
@@ -189,6 +202,21 @@ const hasActiveFilters = (filters) => {
   );
 };
 
+const formatRelativeTime = (timestamp) => {
+  if (!timestamp) return '';
+  
+  const now = new Date();
+  const date = new Date(timestamp);
+  const diffInMillis = now - date;
+  const diffInMinutes = Math.floor(diffInMillis / (1000 * 60));
+  
+  if (diffInMinutes < 1) return 'Just now';
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`;
+  }
+  return formatDaysAgo(timestamp);
+};
+
 export default function PlateDbTable({ 
   initialData = [], 
   loading = false,
@@ -212,13 +240,21 @@ export default function PlateDbTable({
   const [isAddKnownPlateOpen, setIsAddKnownPlateOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [activePlate, setActivePlate] = useState(null);
-  const [newKnownPlate, setNewKnownPlate] = useState({ name: "", notes: "" });
+  const [newKnownPlate, setNewKnownPlate] = useState({ 
+    name: "", 
+    notes: "", 
+    tags: [] 
+  });
   const [availableTags, setAvailableTags] = useState([]);
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
   const [plateInsights, setPlateInsights] = useState(null);
   const [expandedPlates, setExpandedPlates] = useState(new Set());
   const [isDeleteMisreadConfirmOpen, setIsDeleteMisreadConfirmOpen] = useState(false);
   const [activeMisread, setActiveMisread] = useState(null);
+  const [isAddToKnownOpen, setIsAddToKnownOpen] = useState(false);
+  const [selectedParentPlate, setSelectedParentPlate] = useState(null);
+  const [openCombobox, setOpenCombobox] = useState(false);
+  const [knownPlates, setKnownPlates] = useState([]);
 
   useEffect(() => {
     setData(initialData);
@@ -252,6 +288,31 @@ export default function PlateDbTable({
 
     setFilteredData(filtered);
   }, [data, filters.search, filters.tag, filters.dateRange]);
+
+  useEffect(() => {
+    const loadKnownPlates = async () => {
+      if (isAddToKnownOpen) {
+        console.log('Loading known plates...');
+        const result = await getKnownPlatesList();
+        console.log('Known plates result:', result);
+
+        if (result.success && result.data?.data) {
+          const parentPlates = result.data.data
+            .filter(plate => !plate.parent_plate_number)
+            .map(plate => ({
+              ...plate,
+              plateNumber: plate.plate_number
+            }));
+          console.log('Filtered parent plates:', parentPlates);
+          setKnownPlates(parentPlates);
+        } else {
+          setKnownPlates([]);
+        }
+      }
+    };
+
+    loadKnownPlates();
+  }, [isAddToKnownOpen]);
 
   const getSortIcon = (columnKey) => {
     if (sort.field !== columnKey) {
@@ -580,6 +641,112 @@ export default function PlateDbTable({
     setFilteredData(groupedData);
   }, [data, filters.search, filters.tag, filters.dateRange]);
 
+  const handleAddToKnownPlates = async () => {
+    if (!activePlate) return;
+
+    try {
+      const formData = new FormData();
+      
+      if (selectedParentPlate) {
+        formData.append("plateNumber", selectedParentPlate.plateNumber);
+        formData.append("misreads", JSON.stringify([activePlate.plate_number]));
+      } else {
+        formData.append("plateNumber", activePlate.plate_number);
+        formData.append("name", newKnownPlate.name);
+        formData.append("notes", newKnownPlate.notes);
+        formData.append("misreads", JSON.stringify([]));
+      }
+
+      const result = await addKnownPlateWithMisreads(formData);
+
+      if (result.success) {
+        const now = new Date().toISOString();
+        
+        setData(prevData => {
+          const updatedData = prevData.map(plate => {
+            if (selectedParentPlate) {
+              if (plate.plate_number === selectedParentPlate.plateNumber) {
+                const newMisread = {
+                  plate_number: activePlate.plate_number,
+                  parent_plate_number: selectedParentPlate.plateNumber,
+                  occurrence_count: activePlate.occurrence_count || 0,
+                  first_seen_at: activePlate.first_seen_at,
+                  last_seen_at: formatRelativeTime(now),
+                  last_seen_relative: formatRelativeTime(now)
+                };
+
+                const parentDate = new Date(plate.first_seen_at);
+                const misreadDate = new Date(activePlate.first_seen_at);
+
+                if (misreadDate > parentDate) {
+                  return {
+                    ...plate,
+                    misreads: [...(plate.misreads || []), newMisread],
+                    last_seen_at: now,
+                    last_seen_relative: formatRelativeTime(now)
+                  };
+                }
+
+                return {
+                  ...plate,
+                  misreads: [...(plate.misreads || []), newMisread]
+                };
+              }
+
+              if (plate.plate_number === activePlate.plate_number) {
+                return {
+                  ...plate,
+                  parent_plate_number: selectedParentPlate.plateNumber,
+                  parent_name: selectedParentPlate.name,
+                  parent_notes: selectedParentPlate.notes,
+                  first_seen_at: plate.first_seen_at,
+                  last_seen_at: now,
+                  last_seen_relative: formatRelativeTime(now)
+                };
+              }
+            } else {
+              if (plate.plate_number === activePlate.plate_number) {
+                return {
+                  ...plate,
+                  name: newKnownPlate.name,
+                  notes: newKnownPlate.notes,
+                  first_seen_at: plate.first_seen_at,
+                  last_seen_at: now,
+                  last_seen_relative: formatRelativeTime(now)
+                };
+              }
+            }
+            return plate;
+          });
+
+          return updatedData;
+        });
+
+        toast.success(selectedParentPlate 
+          ? `Added ${activePlate.plate_number} as misread of ${selectedParentPlate.plateNumber}`
+          : `Added ${activePlate.plate_number} to known plates`
+        );
+        setIsAddToKnownOpen(false);
+        setNewKnownPlate({ name: "", notes: "", tags: [] });
+        setSelectedParentPlate(null);
+
+        const knownPlatesResult = await getKnownPlatesList();
+        if (knownPlatesResult.success && knownPlatesResult.data?.data) {
+          const parentPlates = knownPlatesResult.data.data
+            .filter(plate => !plate.parent_plate_number)
+            .map(plate => ({
+              ...plate,
+              plateNumber: plate.plate_number
+            }));
+          setKnownPlates(parentPlates);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to add to known plates:", error);
+      toast.error("Failed to add to known plates");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -747,16 +914,23 @@ export default function PlateDbTable({
                 <TableRow 
                   className={`border-b transition-colors hover:bg-zinc-200 data-[state=selected]:bg-zinc-200 dark:hover:bg-zinc-800/50 dark:data-[state=selected]:bg-zinc-800/50 ${
                     expandedPlates.has(plate.plate_number) ? 'bg-zinc-200 dark:bg-zinc-800/50' : ''
-                  } ${plate.misreads?.length > 0 ? 'cursor-pointer' : ''} ${
+                  } ${plate.misreads?.some(m => parseInt(m.occurrence_count || '0') > 0) ? 'cursor-pointer' : ''} ${
                     plate.flagged ? "text-[#F31260]" : ""
                   }`}
-                  onClick={(e) => plate.misreads?.length > 0 && toggleExpand(plate.plate_number, e)}
+                  onClick={(e) => plate.misreads?.some(m => parseInt(m.occurrence_count || '0') > 0) && toggleExpand(plate.plate_number, e)}
                 >
                   <TableCell className="w-[30px]">
-                    {plate.misreads?.some(misread => parseInt(misread.occurrence_count || '0') > 0) && (
-                      expandedPlates.has(plate.plate_number) ? 
-                        <ChevronDownIcon className="h-4 w-4" /> : 
-                        <ChevronRightIcon className="h-4 w-4" />
+                    {plate.misreads && plate.misreads.some(m => parseInt(m.occurrence_count || '0') > 0) && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        className="h-6 w-6 p-0"
+                      >
+                        {expandedPlates.has(plate.plate_number) ? 
+                          <ChevronDownIcon className="h-4 w-4" /> : 
+                          <ChevronRightIcon className="h-4 w-4" />
+                        }
+                      </Button>
                     )}
                   </TableCell>
                   <TableCell className="font-mono">
@@ -781,7 +955,7 @@ export default function PlateDbTable({
                     {typeof plate.first_seen_at === 'string' ? plate.first_seen_at : format(new Date(plate.first_seen_at), 'dd/MM/yyyy')}
                   </TableCell>
                   <TableCell>
-                    {plate.last_seen_at === '0 minutes ago' ? 'Just now' : plate.last_seen_at || ''}
+                    {plate.last_seen_relative || plate.last_seen_at || ''}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -842,7 +1016,7 @@ export default function PlateDbTable({
                         size="icon"
                         onClick={() => {
                           setActivePlate(plate);
-                          setIsAddKnownPlateOpen(true);
+                          setIsAddToKnownOpen(true);
                         }}
                       >
                         <Plus className="h-4 w-4" />
@@ -883,96 +1057,197 @@ export default function PlateDbTable({
                   </TableCell>
                 </TableRow>
 
-                {/* Misread Rows - simplified with only delete button */}
-                {expandedPlates.has(plate.plate_number) && plate.misreads
-                  ?.filter(misread => parseInt(misread.occurrence_count || '0') > 0)
-                  .map(misread => (
-                    <TableRow 
-                      key={misread.plate_number}
-                      className="bg-zinc-100 dark:bg-zinc-800"
-                    >
-                      <TableCell></TableCell>
-                      <TableCell className="font-mono">
-                        <div className="flex items-center gap-2 pl-6">
-                          <ArrowRightIcon className="h-4 w-4 text-muted-foreground" />
-                          {misread.plate_number}
-                        </div>
-                      </TableCell>
-                      <TableCell>{misread.occurrence_count || 0}</TableCell>
-                      <TableCell>{misread.parent_name || misread.name}</TableCell>
-                      <TableCell>{misread.parent_notes || misread.notes}</TableCell>
-                      <TableCell>
-                        {typeof misread.first_seen_at === 'string' 
-                          ? misread.first_seen_at 
-                          : format(new Date(misread.first_seen_at), 'dd/MM/yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        {misread.last_seen_at || ''}
-                      </TableCell>
-                      <TableCell></TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-red-500 hover:text-red-700"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveMisread(misread);
-                            setIsDeleteMisreadConfirmOpen(true);
-                          }}
-                        >
-                          <X className="h-4 w-4" />
-                          <span className="sr-only">Delete misread</span>
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                {/* Misread Rows */}
+                {expandedPlates.has(plate.plate_number) && 
+                  [...(plate.misreads || [])]
+                    // Filter out misreads with zero occurrences
+                    .filter(misread => parseInt(misread.occurrence_count || '0') > 0)
+                    // Sort misreads by last_seen_at, most recent first
+                    .sort((a, b) => {
+                      // Convert relative times back to timestamps for comparison
+                      const getTimestamp = (item) => {
+                        if (!item.last_seen_at) return 0;
+                        if (item.last_seen_at === 'Just now') return Date.now();
+                        const match = item.last_seen_at.match(/(\d+)/);
+                        if (!match) return 0;
+                        const value = parseInt(match[1]);
+                        if (item.last_seen_at.includes('minute')) {
+                          return Date.now() - (value * 60 * 1000);
+                        }
+                        if (item.last_seen_at.includes('hour')) {
+                          return Date.now() - (value * 60 * 60 * 1000);
+                        }
+                        if (item.last_seen_at.includes('day')) {
+                          return Date.now() - (value * 24 * 60 * 60 * 1000);
+                        }
+                        return 0;
+                      };
+
+                      const timestampA = getTimestamp(a);
+                      const timestampB = getTimestamp(b);
+                      return timestampB - timestampA;  // Most recent first
+                    })
+                    .map(misread => (
+                      <TableRow 
+                        key={misread.plate_number}
+                        className="bg-zinc-100 dark:bg-zinc-800"
+                      >
+                        <TableCell></TableCell>
+                        <TableCell className="font-mono">
+                          <div className="flex items-center gap-2 pl-6">
+                            <ArrowRightIcon className="h-4 w-4 text-muted-foreground" />
+                            {misread.plate_number}
+                          </div>
+                        </TableCell>
+                        <TableCell>{misread.occurrence_count || 0}</TableCell>
+                        <TableCell>{misread.parent_name || misread.name}</TableCell>
+                        <TableCell>{misread.parent_notes || misread.notes}</TableCell>
+                        <TableCell>
+                          {typeof misread.first_seen_at === 'string' 
+                            ? misread.first_seen_at 
+                            : format(new Date(misread.first_seen_at), 'dd/MM/yyyy')}
+                        </TableCell>
+                        <TableCell>
+                          {misread.last_seen_at || ''}
+                        </TableCell>
+                        <TableCell></TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-red-500 hover:text-red-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMisread(misread);
+                              setIsDeleteMisreadConfirmOpen(true);
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                            <span className="sr-only">Delete misread</span>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                }
               </Fragment>
             ))}
           </TableBody>
         </Table>
       </div>
 
-      <Dialog open={isAddKnownPlateOpen} onOpenChange={setIsAddKnownPlateOpen}>
-        <DialogContent>
+      <Dialog open={isAddToKnownOpen} onOpenChange={setIsAddToKnownOpen}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add to Known Plates</DialogTitle>
             <DialogDescription>
-              Add details for the plate {activePlate?.plate_number}
+              Add this plate as a new known plate or as a misread of an existing plate
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
-                Name
-              </Label>
-              <Input
-                id="name"
-                value={newKnownPlate.name}
-                onChange={(e) =>
-                  setNewKnownPlate({ ...newKnownPlate, name: e.target.value })
-                }
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="notes" className="text-right">
-                Notes
-              </Label>
-              <Textarea
-                id="notes"
-                value={newKnownPlate.notes}
-                onChange={(e) =>
-                  setNewKnownPlate({ ...newKnownPlate, notes: e.target.value })
-                }
-                className="col-span-3"
-              />
-            </div>
-          </div>
+
+          <Tabs defaultValue="new">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="new">New Known Plate</TabsTrigger>
+              <TabsTrigger value="existing">Add as Misread</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="new" className="space-y-4">
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    value={newKnownPlate.name}
+                    onChange={(e) =>
+                      setNewKnownPlate({ ...newKnownPlate, name: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={newKnownPlate.notes}
+                    onChange={(e) =>
+                      setNewKnownPlate({ ...newKnownPlate, notes: e.target.value })
+                    }
+                  />
+                </div>
+                {/* Add tag selection here if needed */}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="existing" className="space-y-4">
+              <div className="grid gap-2">
+                <Label>Select Parent Plate</Label>
+                <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={openCombobox}
+                      className="justify-between"
+                    >
+                      {selectedParentPlate
+                        ? `${selectedParentPlate.plateNumber} ${
+                            selectedParentPlate.name ? `(${selectedParentPlate.name})` : ""
+                          }`
+                        : "Select a plate..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0">
+                    <Command shouldFilter={false}>
+                      <CommandInput 
+                        placeholder="Search known plates..."
+                        onValueChange={(search) => {
+                          // Handle search manually if needed
+                        }}
+                      />
+                      <CommandList>
+                        <CommandEmpty>No known plate found.</CommandEmpty>
+                        <CommandGroup>
+                          {knownPlates?.map((plate) => (
+                            <CommandItem
+                              key={plate.plateNumber}
+                              value={plate.plateNumber}
+                              onSelect={() => {
+                                setSelectedParentPlate(plate);
+                                setOpenCombobox(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedParentPlate?.plateNumber === plate.plateNumber
+                                    ? "opacity-100"
+                                    : "opacity-0"
+                                )}
+                              />
+                              <span>{plate.plateNumber}</span>
+                              {plate.name && (
+                                <span className="ml-2 text-muted-foreground">
+                                  ({plate.name})
+                                </span>
+                              )}
+                            </CommandItem>
+                          ))}
+                          {(!knownPlates || knownPlates.length === 0) && (
+                            <CommandItem disabled>No known plates found</CommandItem>
+                          )}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </TabsContent>
+          </Tabs>
+
           <DialogFooter>
-            <Button type="submit" onClick={handleAddKnownPlate}>
-              Add to Known Plates
+            <Button variant="outline" onClick={() => setIsAddToKnownOpen(false)}>
+              Cancel
             </Button>
+            <Button onClick={handleAddToKnownPlates}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

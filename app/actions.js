@@ -695,12 +695,21 @@ export async function correctPlateRead(formData) {
   }
 }
 
-export async function addKnownPlateWithMisreads(formData) {
+export async function addKnownPlateWithMisreads(data) {
   try {
-    const plateNumber = formData.get("plateNumber");
-    const name = formData.get("name");
-    const notes = formData.get("notes") || null;
-    const misreads = JSON.parse(formData.get("misreads") || "[]");
+    let plateNumber, name, notes, misreads;
+
+    if (data instanceof FormData) {
+      plateNumber = data.get("plateNumber");
+      if (data.get("name")) name = data.get("name");
+      if (data.get("notes")) notes = data.get("notes");
+      misreads = JSON.parse(data.get("misreads") || "[]");
+    } else {
+      plateNumber = data.plateNumber;
+      if (data.name) name = data.name;
+      if (data.notes) notes = data.notes;
+      misreads = data.misreads || [];
+    }
 
     const plate = await addKnownPlateWithMisreadsDB({
       plateNumber,

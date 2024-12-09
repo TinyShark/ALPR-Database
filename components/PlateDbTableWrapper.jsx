@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState, useMemo } from "react";
 import PlateDbTable from "./plateDbTable";
 import { getAllPlatesWithKnownInfo } from "@/app/actions";
 import { format } from "date-fns";
+import { toast } from "sonner";
+import { addKnownPlateWithMisreads } from "@/app/actions";
 
 export function PlateDbTableWrapper() {
   const router = useRouter();
@@ -59,7 +61,16 @@ export function PlateDbTableWrapper() {
       });
 
       if (result.success) {
-        setData(result.data);
+        // Transform data to ensure consistent plate number format
+        const transformedData = result.data.map(plate => ({
+          ...plate,
+          plateNumber: plate.plate_number,
+          misreads: plate.misreads?.map(misread => ({
+            ...misread,
+            plateNumber: misread.plate_number
+          }))
+        }));
+        setData(transformedData);
         setTotal(result.pagination.total);
       }
     } catch (error) {
@@ -162,7 +173,40 @@ export function PlateDbTableWrapper() {
       // Use the new params string directly
       router.push(`${pathname}?${newParams.toString()}`);
     },
-  }), [urlParams, total, router, pathname, createQueryString]);
+
+    handleAddToKnownPlates: async (plateData) => {
+      try {
+        if (plateData.type === 'new') {
+          // Adding as new known plate
+          const result = await addKnownPlateWithMisreads({
+            plateNumber: plateData.plateNumber,
+            name: plateData.name,
+            notes: plateData.notes,
+            tags: plateData.tags || []
+          });
+          
+          if (result.success) {
+            toast.success('Added to known plates successfully');
+            loadData(); // Refresh the data
+          }
+        } else {
+          // Adding as misread to existing plate
+          const result = await addKnownPlateWithMisreads({
+            plateNumber: plateData.parentPlateNumber,
+            misreads: [plateData.plateNumber]
+          });
+          
+          if (result.success) {
+            toast.success('Added as misread successfully');
+            loadData(); // Refresh the data
+          }
+        }
+      } catch (error) {
+        console.error('Error adding to known plates:', error);
+        toast.error('Failed to add to known plates');
+      }
+    }
+  }), [urlParams, total, router, pathname, createQueryString, loadData]);
 
   const paginationProps = useMemo(() => ({
     page: parseInt(urlParams.page),
